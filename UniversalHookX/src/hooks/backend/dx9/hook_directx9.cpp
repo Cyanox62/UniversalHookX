@@ -9,13 +9,19 @@
 
 #include <memory>
 
-#include "hook_directx9.hpp"
+#include "../dx9/hook_directx9.hpp"
+#include "../dx10/hook_directx10.hpp"
+#include "../dx11/hook_directx11.hpp"
+#include "../dx12/hook_directx12.hpp"
+#include "../opengl/hook_opengl.hpp"
+#include "../vulkan/hook_vulkan.hpp"
 
 #include "../../../dependencies/imgui/imgui_impl_dx9.h"
 #include "../../../dependencies/imgui/imgui_impl_win32.h"
 #include "../../../dependencies/minhook/MinHook.h"
 
 #include "../../hooks.hpp"
+#include "../../../utils/utils.hpp"
 
 #include "../../../menu/menu.hpp"
 
@@ -148,6 +154,14 @@ static void CleanupDeviceD3D9( ) {
 }
 
 static void RenderImGui_DX9(IDirect3DDevice9* pDevice) {
+    if (U::GetRenderingBackend( ) != NONE && U::GetRenderingBackend( ) != DIRECTX9)
+        return;
+
+    if (U::GetRenderingBackend( ) == NONE) {
+        LOG("[+] DX9 Present fired — claiming backend\n");
+        U::SetRenderingBackend(DIRECTX9);
+    }
+
     if (!ImGui::GetIO( ).BackendRendererUserData) {
         ImGui_ImplDX9_Init(pDevice);
     }

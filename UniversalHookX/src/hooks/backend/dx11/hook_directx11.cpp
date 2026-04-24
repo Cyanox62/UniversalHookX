@@ -12,7 +12,12 @@
 
 #include <memory>
 
-#include "hook_directx11.hpp"
+#include "../dx9/hook_directx9.hpp"
+#include "../dx10/hook_directx10.hpp"
+#include "../dx11/hook_directx11.hpp"
+#include "../dx12/hook_directx12.hpp"
+#include "../opengl/hook_opengl.hpp"
+#include "../vulkan/hook_vulkan.hpp"
 
 #include "../../../dependencies/imgui/imgui_impl_dx11.h"
 #include "../../../dependencies/imgui/imgui_impl_win32.h"
@@ -164,7 +169,7 @@ static HRESULT WINAPI hkCreateSwapChainForComposition(IDXGIFactory* pFactory,
 
 namespace DX11 {
     void Hook(HWND hwnd) {
-        if (!CreateDeviceD3D11(GetConsoleWindow( ))) {
+        if (!CreateDeviceD3D11(hwnd)) {
             LOG("[!] CreateDeviceD3D11() failed.\n");
             return;
         }
@@ -274,6 +279,14 @@ static void CleanupDeviceD3D11( ) {
 }
 
 static void RenderImGui_DX11(IDXGISwapChain* pSwapChain) {
+    if (U::GetRenderingBackend( ) != NONE && U::GetRenderingBackend( ) != DIRECTX11)
+        return;
+    
+    if (U::GetRenderingBackend( ) == NONE) {
+        LOG("[+] DX11 Present fired — claiming backend\n");
+        U::SetRenderingBackend(DIRECTX11);
+    }
+
     if (!ImGui::GetIO( ).BackendRendererUserData) {
         if (SUCCEEDED(pSwapChain->GetDevice(IID_PPV_ARGS(&g_pd3dDevice)))) {
             g_pd3dDevice->GetImmediateContext(&g_pd3dDeviceContext);

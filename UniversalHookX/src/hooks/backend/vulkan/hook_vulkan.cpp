@@ -18,6 +18,7 @@
 #include "../../../dependencies/minhook/MinHook.h"
 
 #include "../../hooks.hpp"
+#include "../../../utils/utils.hpp"
 
 #include "../../../menu/menu.hpp"
 
@@ -416,6 +417,14 @@ static void CleanupDeviceVulkan( ) {
 }
 
 static void RenderImGui_Vulkan(VkQueue queue, const VkPresentInfoKHR* pPresentInfo) {
+    if (U::GetRenderingBackend( ) != NONE && U::GetRenderingBackend( ) != VULKAN)
+        return;
+
+    if (U::GetRenderingBackend( ) == NONE) {
+        LOG("[+] Vulkan Present fired — claiming backend\n");
+        U::SetRenderingBackend(VULKAN);
+    }
+
     if (!g_Device || H::bShuttingDown)
         return;
 

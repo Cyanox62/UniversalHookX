@@ -12,7 +12,12 @@
 
 #include <memory>
 
-#include "hook_directx10.hpp"
+#include "../dx9/hook_directx9.hpp"
+#include "../dx10/hook_directx10.hpp"
+#include "../dx11/hook_directx11.hpp"
+#include "../dx12/hook_directx12.hpp"
+#include "../opengl/hook_opengl.hpp"
+#include "../vulkan/hook_vulkan.hpp"
 
 #include "../../../dependencies/imgui/imgui_impl_dx10.h"
 #include "../../../dependencies/imgui/imgui_impl_win32.h"
@@ -265,6 +270,14 @@ static void CleanupDeviceD3D10( ) {
 }
 
 static void RenderImGui_DX10(IDXGISwapChain* pSwapChain) {
+    if (U::GetRenderingBackend( ) != NONE && U::GetRenderingBackend( ) != DIRECTX10)
+        return;
+
+    if (U::GetRenderingBackend( ) == NONE) {
+        LOG("[+] DX10 Present fired — claiming backend\n");
+        U::SetRenderingBackend(DIRECTX10);
+    }
+
     if (!ImGui::GetIO( ).BackendRendererUserData) {
         if (SUCCEEDED(pSwapChain->GetDevice(IID_PPV_ARGS(&g_pd3dDevice)))) {
             ImGui_ImplDX10_Init(g_pd3dDevice);

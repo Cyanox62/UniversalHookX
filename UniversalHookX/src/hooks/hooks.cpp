@@ -88,27 +88,12 @@ namespace Hooks {
         }
 #endif
 
-        RenderingBackend_t eRenderingBackend = U::GetRenderingBackend( );
-        switch (eRenderingBackend) {
-            case DIRECTX9:
-                DX9::Hook(g_hWindow);
-                break;
-            case DIRECTX10:
-                DX10::Hook(g_hWindow);
-                break;
-            case DIRECTX11:
-                DX11::Hook(g_hWindow);
-                break;
-            case DIRECTX12:
-                DX12::Hook(g_hWindow);
-                break;
-            case OPENGL:
-                GL::Hook(g_hWindow);
-                break;
-            case VULKAN:
-                VK::Hook(g_hWindow);
-                break;
-        }
+        DX9::Hook(g_hWindow);
+        //DX10::Hook(g_hWindow);
+        DX11::Hook(g_hWindow);
+        DX12::Hook(g_hWindow);
+        GL::Hook(g_hWindow);
+        VK::Hook(g_hWindow);
 
 #ifdef DISABLE_LOGGING_CONSOLE
         if (bNoConsole) {

@@ -28,6 +28,8 @@
     <ClCompile Include="src\dependencies\imgui\imgui_impl_opengl3.cpp" />
     <ClCompile Include="src\menu\menu.cpp" />
     <ClCompile Include="src\hooks\backend\vulkan\hook_vulkan.cpp" />
+    <ClCompile Include="src\dependencies\imgui\imgui_impl_vulkan.cpp" />
+    <ClCompile Include="src\exports.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\console\console.hpp" />
@@ -62,5 +64,6 @@
     <ClInclude Include="src\backend.hpp" />
     <ClInclude Include="src\menu\menu.hpp" />
     <ClInclude Include="src\hooks\backend\vulkan\hook_vulkan.hpp" />
+    <ClInclude Include="src\dependencies\imgui\imgui_impl_vulkan.h" />
   </ItemGroup>
 </Project>

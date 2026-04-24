@@ -13,11 +13,20 @@
 #include "../../../dependencies/minhook/MinHook.h"
 
 #include "../../hooks.hpp"
+#include "../../../utils/utils.hpp"
 
 #include "../../../menu/menu.hpp"
 
 static std::add_pointer_t<BOOL WINAPI(HDC)> oWglSwapBuffers;
 static BOOL WINAPI hkWglSwapBuffers(HDC Hdc) {
+    if (U::GetRenderingBackend( ) != NONE && U::GetRenderingBackend( ) != OPENGL)
+        return oWglSwapBuffers(Hdc);
+
+    if (U::GetRenderingBackend( ) == NONE) {
+        LOG("[+] OpenGL SwapBuffers fired — claiming backend\n");
+        U::SetRenderingBackend(OPENGL);
+    }
+
     if (!H::bShuttingDown && ImGui::GetCurrentContext( )) {
         if (!ImGui::GetIO( ).BackendRendererUserData)
             ImGui_ImplOpenGL3_Init( );
