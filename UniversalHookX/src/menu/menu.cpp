@@ -6,6 +6,7 @@
 #include <vector>
 #include <string>
 #include <chrono>
+#include <mutex>
 
 namespace ig = ImGui;
 
@@ -29,13 +30,16 @@ namespace Menu {
     };
 
     static std::vector<Notification> g_notifications;
+    static std::mutex g_notificationsMutex;
 
     void AddNotification(const std::string& title, const std::string& message, float durationSeconds) {
         auto now = std::chrono::steady_clock::now( );
+        std::lock_guard<std::mutex> lock(g_notificationsMutex);
         g_notifications.push_back({title, message, now, now + std::chrono::milliseconds((int)(durationSeconds * 1000))});
     }
 
     void RenderNotifications( ) {
+        std::lock_guard<std::mutex> lock(g_notificationsMutex);
         auto now = std::chrono::steady_clock::now( );
         g_notifications.erase(
             std::remove_if(g_notifications.begin( ), g_notifications.end( ),

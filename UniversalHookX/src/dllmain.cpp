@@ -33,24 +33,11 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
 }
 
 DWORD WINAPI OnProcessAttach(LPVOID lpParam) {
-    Console::Alloc( );
+    //Console::Alloc( );
     LOG("[+] Auto-detecting rendering backend...");
-    //LOG("[+] Rendering backend: %s\n", U::RenderingBackendToStr( ));
-    //if (U::GetRenderingBackend( ) == NONE) {
-    //    LOG("[!] Looks like you forgot to set a backend. Will unload after pressing enter...");
-    //    std::cin.get( );
-
-    //    FreeLibraryAndExitThread(reinterpret_cast<HMODULE>(lpParam), 0);
-    //    return 0;
-    //}
 
     MH_Initialize( );
     H::Init( );
-
-    //std::thread([]( ) {
-    //    Sleep(2000);
-    //    Menu::AddNotification("Achievement unlocked!", "You have unlocked a new achievement.", 5.0f);
-    //}).detach( );
 
     return 0;
 }

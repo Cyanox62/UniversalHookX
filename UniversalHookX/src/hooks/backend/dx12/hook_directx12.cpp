@@ -46,8 +46,18 @@ static void CleanupDeviceD3D12( );
 static void CleanupRenderTarget( );
 static void RenderImGui_DX12(IDXGISwapChain3* pSwapChain);
 
-static bool CreateDeviceD3D12(HWND hWnd) {
-    // Setup swap chain
+static bool CreateDeviceD3D12(HWND) {
+    WNDCLASSEXA wc = { sizeof(wc) };
+    wc.lpfnWndProc = DefWindowProcA;
+    wc.hInstance = GetModuleHandleA(NULL);
+    wc.lpszClassName = "__uhx_dx12_vtbl";
+    RegisterClassExA(&wc);
+    HWND hTempWnd = CreateWindowExA(0, wc.lpszClassName, NULL, WS_POPUP, 0, 0, 8, 8, NULL, NULL, wc.hInstance, NULL);
+    if (!hTempWnd) {
+        UnregisterClassA(wc.lpszClassName, wc.hInstance);
+        return false;
+    }
+
     DXGI_SWAP_CHAIN_DESC1 sd = { };
     sd.BufferCount = NUM_BACK_BUFFERS;
     sd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -56,25 +66,21 @@ static bool CreateDeviceD3D12(HWND hWnd) {
     sd.SampleDesc.Count = 1;
     sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 
-    // Create device
     D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
-    if (D3D12CreateDevice(NULL, featureLevel, IID_PPV_ARGS(&g_pd3dDevice)) != S_OK)
-        return false;
+    bool ok = D3D12CreateDevice(NULL, featureLevel, IID_PPV_ARGS(&g_pd3dDevice)) == S_OK;
 
     D3D12_COMMAND_QUEUE_DESC desc = { };
-    if (g_pd3dDevice->CreateCommandQueue(&desc, IID_PPV_ARGS(&g_pd3dCommandQueue)) != S_OK)
-        return false;
+    ok = ok && g_pd3dDevice->CreateCommandQueue(&desc, IID_PPV_ARGS(&g_pd3dCommandQueue)) == S_OK;
+    ok = ok && CreateDXGIFactory1(IID_PPV_ARGS(&g_dxgiFactory)) == S_OK;
 
     IDXGISwapChain1* swapChain1 = NULL;
-    if (CreateDXGIFactory1(IID_PPV_ARGS(&g_dxgiFactory)) != S_OK)
-        return false;
-    if (g_dxgiFactory->CreateSwapChainForHwnd(g_pd3dCommandQueue, hWnd, &sd, NULL, NULL, &swapChain1) != S_OK)
-        return false;
-    if (swapChain1->QueryInterface(IID_PPV_ARGS(&g_pSwapChain)) != S_OK)
-        return false;
-    swapChain1->Release( );
+    ok = ok && g_dxgiFactory->CreateSwapChainForHwnd(g_pd3dCommandQueue, hTempWnd, &sd, NULL, NULL, &swapChain1) == S_OK;
+    ok = ok && swapChain1->QueryInterface(IID_PPV_ARGS(&g_pSwapChain)) == S_OK;
+    if (swapChain1) swapChain1->Release( );
 
-    return true;
+    DestroyWindow(hTempWnd);
+    UnregisterClassA(wc.lpszClassName, wc.hInstance);
+    return ok;
 }
 
 static void CreateRenderTarget(IDXGISwapChain* pSwapChain) {
@@ -199,7 +205,7 @@ static HRESULT WINAPI hkCreateSwapChainForComposition(IDXGIFactory* pFactory,
 
 namespace DX12 {
     void Hook(HWND hwnd) {
-        if (!CreateDeviceD3D12(GetConsoleWindow( ))) {
+        if (!CreateDeviceD3D12(hwnd)) {
             LOG("[!] CreateDeviceD3D12() failed.\n");
             return;
         }
