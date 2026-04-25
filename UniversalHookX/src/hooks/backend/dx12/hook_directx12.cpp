@@ -12,10 +12,10 @@
 
 #include <memory>
 
-#include "../dx9/hook_directx9.hpp"
 #include "../dx10/hook_directx10.hpp"
 #include "../dx11/hook_directx11.hpp"
 #include "../dx12/hook_directx12.hpp"
+#include "../dx9/hook_directx9.hpp"
 #include "../opengl/hook_opengl.hpp"
 #include "../vulkan/hook_vulkan.hpp"
 
@@ -40,6 +40,7 @@ static IDXGISwapChain3* g_pSwapChain = NULL;
 static ID3D12CommandAllocator* g_commandAllocators[NUM_BACK_BUFFERS] = { };
 static ID3D12Resource* g_mainRenderTargetResource[NUM_BACK_BUFFERS] = { };
 static D3D12_CPU_DESCRIPTOR_HANDLE g_mainRenderTargetDescriptor[NUM_BACK_BUFFERS] = { };
+static std::atomic<bool> g_bHookReady = false;
 
 static void CleanupDeviceD3D12( );
 static void CleanupRenderTarget( );
@@ -260,6 +261,7 @@ namespace DX12 {
             MH_EnableHook(fnResizeBuffers1);
 
             MH_EnableHook(fnExecuteCommandLists);
+            g_bHookReady = true;
         }
     }
 
@@ -275,6 +277,15 @@ namespace DX12 {
         }
 
         CleanupDeviceD3D12( );
+    }
+
+    // Called from DX11 to render frames on DX12
+    void RenderFrame(IDXGISwapChain* pSwapChain) {
+        RenderImGui_DX12(reinterpret_cast<IDXGISwapChain3*>(pSwapChain));
+    }
+
+    void CleanupRenderTargets( ) {
+        CleanupRenderTarget( );
     }
 } // namespace DX12
 
@@ -325,9 +336,12 @@ static void RenderImGui_DX12(IDXGISwapChain3* pSwapChain) {
         return;
 
     if (U::GetRenderingBackend( ) == NONE) {
-        LOG("[+] DX12 Present fired — claiming backend\n");
+        LOG("[+] DX12 detected — claiming backend\n");
         U::SetRenderingBackend(DIRECTX12);
     }
+
+    if (!g_bHookReady || !g_pd3dCommandQueue)
+        return;
 
     if (!ImGui::GetIO( ).BackendRendererUserData) {
         if (SUCCEEDED(pSwapChain->GetDevice(IID_PPV_ARGS(&g_pd3dDevice)))) {

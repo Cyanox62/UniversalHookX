@@ -6,16 +6,19 @@
 
 #include <d3d11.h>
 #include <dxgi1_2.h>
+#ifdef ENABLE_BACKEND_DX12
+#include <d3d12.h>
+#endif
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
 
 #include <memory>
 
-#include "../dx9/hook_directx9.hpp"
 #include "../dx10/hook_directx10.hpp"
 #include "../dx11/hook_directx11.hpp"
 #include "../dx12/hook_directx12.hpp"
+#include "../dx9/hook_directx9.hpp"
 #include "../opengl/hook_opengl.hpp"
 #include "../vulkan/hook_vulkan.hpp"
 
@@ -103,7 +106,9 @@ static HRESULT WINAPI hkResizeBuffers(IDXGISwapChain* pSwapChain,
                                       DXGI_FORMAT NewFormat,
                                       UINT SwapChainFlags) {
     CleanupRenderTarget( );
-
+#ifdef ENABLE_BACKEND_DX12
+    DX12::CleanupRenderTargets( );
+#endif
     return oResizeBuffers(pSwapChain, BufferCount, Width, Height, NewFormat, SwapChainFlags);
 }
 
@@ -117,7 +122,9 @@ static HRESULT WINAPI hkResizeBuffers1(IDXGISwapChain* pSwapChain,
                                        const UINT* pCreationNodeMask,
                                        IUnknown* const* ppPresentQueue) {
     CleanupRenderTarget( );
-
+#ifdef ENABLE_BACKEND_DX12
+    DX12::CleanupRenderTargets( );
+#endif
     return oResizeBuffers1(pSwapChain, BufferCount, Width, Height, NewFormat, SwapChainFlags, pCreationNodeMask, ppPresentQueue);
 }
 
@@ -127,7 +134,9 @@ static HRESULT WINAPI hkCreateSwapChain(IDXGIFactory* pFactory,
                                         DXGI_SWAP_CHAIN_DESC* pDesc,
                                         IDXGISwapChain** ppSwapChain) {
     CleanupRenderTarget( );
-
+#ifdef ENABLE_BACKEND_DX12
+    DX12::CleanupRenderTargets( );
+#endif
     return oCreateSwapChain(pFactory, pDevice, pDesc, ppSwapChain);
 }
 
@@ -140,7 +149,9 @@ static HRESULT WINAPI hkCreateSwapChainForHwnd(IDXGIFactory* pFactory,
                                                IDXGIOutput* pRestrictToOutput,
                                                IDXGISwapChain1** ppSwapChain) {
     CleanupRenderTarget( );
-
+#ifdef ENABLE_BACKEND_DX12
+    DX12::CleanupRenderTargets( );
+#endif
     return oCreateSwapChainForHwnd(pFactory, pDevice, hWnd, pDesc, pFullscreenDesc, pRestrictToOutput, ppSwapChain);
 }
 
@@ -152,7 +163,9 @@ static HRESULT WINAPI hkCreateSwapChainForCoreWindow(IDXGIFactory* pFactory,
                                                      IDXGIOutput* pRestrictToOutput,
                                                      IDXGISwapChain1** ppSwapChain) {
     CleanupRenderTarget( );
-
+#ifdef ENABLE_BACKEND_DX12
+    DX12::CleanupRenderTargets( );
+#endif
     return oCreateSwapChainForCoreWindow(pFactory, pDevice, pWindow, pDesc, pRestrictToOutput, ppSwapChain);
 }
 
@@ -163,7 +176,9 @@ static HRESULT WINAPI hkCreateSwapChainForComposition(IDXGIFactory* pFactory,
                                                       IDXGIOutput* pRestrictToOutput,
                                                       IDXGISwapChain1** ppSwapChain) {
     CleanupRenderTarget( );
-
+#ifdef ENABLE_BACKEND_DX12
+    DX12::CleanupRenderTargets( );
+#endif
     return oCreateSwapChainForComposition(pFactory, pDevice, pDesc, pRestrictToOutput, ppSwapChain);
 }
 
@@ -279,10 +294,25 @@ static void CleanupDeviceD3D11( ) {
 }
 
 static void RenderImGui_DX11(IDXGISwapChain* pSwapChain) {
+#ifdef ENABLE_BACKEND_DX12
+    if (U::GetRenderingBackend( ) == DIRECTX12) {
+        DX12::RenderFrame(pSwapChain);
+        return;
+    }
+#endif
+
     if (U::GetRenderingBackend( ) != NONE && U::GetRenderingBackend( ) != DIRECTX11)
         return;
-    
+
     if (U::GetRenderingBackend( ) == NONE) {
+#ifdef ENABLE_BACKEND_DX12
+        ID3D12Device* pDevice12 = nullptr;
+        if (SUCCEEDED(pSwapChain->GetDevice(__uuidof(ID3D12Device), (void**)&pDevice12)) && pDevice12) {
+            pDevice12->Release( );
+            DX12::RenderFrame(pSwapChain);
+            return;
+        }
+#endif
         LOG("[+] DX11 Present fired — claiming backend\n");
         U::SetRenderingBackend(DIRECTX11);
     }
