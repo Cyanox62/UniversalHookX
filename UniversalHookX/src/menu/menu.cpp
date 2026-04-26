@@ -137,6 +137,10 @@ namespace Menu {
     static std::unordered_map<std::string, void*> g_texCache;
     static TextureUploaderFn g_textureUploader = nullptr;
 
+    ImFont* g_fontRegular;
+    ImFont* g_fontBold;
+    ImFont* g_fontBoldLg;
+
     void RegisterTextureUploader(TextureUploaderFn fn) {
         g_textureUploader = fn;
     }
@@ -149,7 +153,11 @@ namespace Menu {
         ImGui_ImplWin32_Init(hwnd);
 
         ImGuiIO& io = ImGui::GetIO( );
-        io.IniFilename = io.LogFilename = nullptr;
+        io.IniFilename  = io.LogFilename = nullptr;
+        io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+        g_fontRegular = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\verdana.ttf", 13.0f);
+        g_fontBold = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\verdanab.ttf", 13.0f);
+        g_fontBoldLg = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\verdanab.ttf", 15.0f);
     }
 
     void AddNotification(const std::string& title, const std::string& message,
@@ -254,89 +262,109 @@ namespace Menu {
         Notification& n = g_notifications.front( );
 
         if (!n.started) {
-            n.start  = now;
+            n.start = now;
             n.expiry = now + std::chrono::milliseconds((int)(n.durationSeconds));
             n.started = true;
         }
 
-        const float elapsed   = std::chrono::duration<float>(now - n.start).count( );
+        const float elapsed = std::chrono::duration<float>(now - n.start).count( );
         const float remaining = std::chrono::duration<float>(n.expiry - now).count( );
 
-        const float FADE_IN_TIME  = 0.18f;
+        const float FADE_IN_TIME = 0.18f;
         const float FADE_OUT_TIME = 0.18f;
-        const float alpha_in  = (elapsed   < FADE_IN_TIME)  ? ImClamp(elapsed   / FADE_IN_TIME,  0.0f, 1.0f) : 1.0f;
+        const float alpha_in = (elapsed < FADE_IN_TIME) ? ImClamp(elapsed / FADE_IN_TIME, 0.0f, 1.0f) : 1.0f;
         const float alpha_out = (remaining < FADE_OUT_TIME) ? ImClamp(remaining / FADE_OUT_TIME, 0.0f, 1.0f) : 1.0f;
         const float alpha = alpha_in * alpha_out;
 
         TryUploadImage(n);
 
         ImGuiIO& io = ImGui::GetIO( );
-        const float padding = 12.0f;
-        const float width   = 340.0f;
-        const float height  = 82.0f;
 
-        ImGui::SetNextWindowPos({io.DisplaySize.x - width - padding, io.DisplaySize.y - height - padding});
+        const float outerPad = 12.0f;
+        const float width = 320.0f;
+        const float height = 90.0f;
+
+        ImGui::SetNextWindowPos({io.DisplaySize.x - width - outerPad, io.DisplaySize.y - height - outerPad});
         ImGui::SetNextWindowSize({width, height});
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.5f);
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.10f, 0.10f, 0.10f, alpha));
-        ImGui::PushStyleColor(ImGuiCol_Border,   ImVec4(0.83f, 0.68f, 0.21f, alpha));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.0f, 0.0f});
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.08f, 0.07f, 0.04f, alpha));
+        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.72f, 0.58f, 0.15f, alpha));
 
         ImGui::Begin("##notif", nullptr,
-                     ImGuiWindowFlags_NoDecoration |
-                     ImGuiWindowFlags_NoInputs      |
-                     ImGuiWindowFlags_NoMove         |
-                     ImGuiWindowFlags_NoSavedSettings|
-                     ImGuiWindowFlags_NoBringToFrontOnFocus);
+                        ImGuiWindowFlags_NoDecoration |
+                        ImGuiWindowFlags_NoInputs |
+                        ImGuiWindowFlags_NoMove |
+                        ImGuiWindowFlags_NoSavedSettings |
+                        ImGuiWindowFlags_NoBringToFrontOnFocus);
+
+        ImDrawList* draw = ImGui::GetWindowDrawList( );
+        ImVec2 wp = ImGui::GetWindowPos( );
+
+        const ImU32 goldCol = IM_COL32(200, 160, 40, (int)(255 * alpha));
+        const ImU32 dgoldCol = IM_COL32(140, 105, 15, (int)(255 * alpha));
+        const ImU32 whiteCol = IM_COL32(255, 255, 255, (int)(200 * alpha));
+
+        const float headerY = 7.0f;
+        ImGui::PushFont(g_fontBold);
+        ImGui::SetCursorPos({10.0f, headerY});
+        ImGui::TextColored({0.78f, 0.62f, 0.16f, alpha}, "ACHIEVEMENT UNLOCKED");
+        const float headerLineY = headerY + ImGui::GetTextLineHeight( ) + 4.0f;
+        ImGui::PopFont( );
+
+        draw->AddLine({wp.x + 10.0f, wp.y + headerLineY},
+                      {wp.x + width - 10.0f, wp.y + headerLineY},
+                      IM_COL32(200, 160, 40, (int)(120 * alpha)), 1.0f);
+
+        const float bodyTop = headerLineY + 6.0f;
+        const float iconSize = 44.0f;
+        const float iconX = 10.0f;
+        const float iconY = bodyTop + ((height - bodyTop) - iconSize) * 0.5f - 4.0f;
+        const float textX = iconX + iconSize + 10.0f;
+        const float textW = width - textX - 10.0f;
+        const float titleY = bodyTop + 4.0f;
+        const float bodyTextY = titleY + ImGui::GetTextLineHeight( ) + 3.0f;
 
         if (n.imgTex) {
-            ImGui::SetCursorPos({12.0f, 12.0f});
-            ImGui::Image(reinterpret_cast<ImTextureID>(n.imgTex),
-                         {58.0f, 58.0f}, {0, 0}, {1, 1}, {1, 1, 1, alpha});
-
-            const float textX   = 78.0f;
-            const float text_w  = width - textX - padding;
-
-            ImGui::SetCursorPos({textX, 12.0f});
-            ImGui::TextColored({1.0f, 0.84f, 0.21f, alpha}, "%s", n.title.c_str( ));
-
-            const std::string body = TruncateToTwoLines(n.message, text_w);
-            ImGui::SetCursorPos({textX, 32.0f});
-            ImGui::PushTextWrapPos(textX + text_w);
-            ImGui::TextColored({0.85f, 0.85f, 0.85f, alpha}, "%s", body.c_str( ));
-            ImGui::PopTextWrapPos( );
+            const ImVec2 imgMin = {wp.x + iconX, wp.y + iconY};
+            const ImVec2 imgMax = {wp.x + iconX + iconSize, wp.y + iconY + iconSize};
+            draw->AddImageRounded(
+                reinterpret_cast<ImTextureID>(n.imgTex),
+                imgMin, imgMax,
+                {0.0f, 0.0f}, {1.0f, 1.0f},
+                IM_COL32(255, 255, 255, (int)(255 * alpha)),
+                6.0f
+            );
         } else {
-            ImDrawList* draw = ImGui::GetWindowDrawList( );
-            ImVec2 wp = ImGui::GetWindowPos( );
+            const float cx = wp.x + iconX + iconSize * 0.5f;
+            const float cy = wp.y + iconY + iconSize * 0.5f;
 
-            const float cx    = wp.x + 35.0f;
-            const float cy    = wp.y + height * 0.5f;
-            const ImU32 gold  = IM_COL32(212, 175, 55,  (int)(255 * alpha));
-            const ImU32 dgold = IM_COL32(160, 120, 20,  (int)(255 * alpha));
-            const ImU32 white = IM_COL32(255, 255, 255, (int)(200 * alpha));
-
-            draw->AddRectFilled({cx - 12, cy - 14}, {cx + 12, cy + 6},  gold, 2.0f);
-            draw->AddRectFilled({cx - 14, cy - 16}, {cx + 14, cy - 12}, gold);
-            draw->AddCircle({cx - 14, cy - 8}, 5.0f, gold, 12, 2.5f);
-            draw->AddCircle({cx + 14, cy - 8}, 5.0f, gold, 12, 2.5f);
-            draw->AddRectFilled({cx - 3, cy + 6},  {cx + 3,  cy + 14}, dgold);
-            draw->AddRectFilled({cx - 10, cy + 14},{cx + 10, cy + 17}, gold);
-            draw->AddText({cx - 5, cy - 8}, white, "*");
-
-            ImGui::SetCursorPos({60.0f, 12.0f});
-            ImGui::TextColored({1.0f, 0.84f, 0.21f, alpha}, "%s", n.title.c_str( ));
-
-            const float text_w = width - 60.0f - 12.0f;
-            const std::string body = TruncateToTwoLines(n.message, text_w);
-            ImGui::SetCursorPos({60.0f, 32.0f});
-            ImGui::PushTextWrapPos(60.0f + text_w);
-            ImGui::TextColored({0.85f, 0.85f, 0.85f, alpha}, "%s", body.c_str( ));
-            ImGui::PopTextWrapPos( );
+            draw->AddRectFilled({cx - 12, cy - 14}, {cx + 12, cy + 6}, goldCol, 2.0f);
+            draw->AddRectFilled({cx - 14, cy - 16}, {cx + 14, cy - 12}, goldCol);
+            draw->AddCircle({cx - 14, cy - 8}, 5.0f, goldCol, 12, 2.5f);
+            draw->AddCircle({cx + 14, cy - 8}, 5.0f, goldCol, 12, 2.5f);
+            draw->AddRectFilled({cx - 3, cy + 6}, {cx + 3, cy + 14}, dgoldCol);
+            draw->AddRectFilled({cx - 10, cy + 14}, {cx + 10, cy + 17}, goldCol);
+            draw->AddText({cx - 5, cy - 8}, whiteCol, "*");
         }
+
+        ImGui::PushFont(g_fontBoldLg);
+        ImGui::SetCursorPos({textX, titleY});
+        ImGui::TextColored({1.0f, 1.0f, 1.0f, alpha}, "%s", n.title.c_str( ));
+        ImGui::PopFont( );
+
+        ImGui::PushFont(g_fontRegular);
+        const std::string body = TruncateToTwoLines(n.message, textW);
+        ImGui::SetCursorPos({textX, bodyTextY});
+        ImGui::PushTextWrapPos(textX + textW);
+        ImGui::TextColored({0.78f, 0.78f, 0.78f, alpha}, "%s", body.c_str( ));
+        ImGui::PopTextWrapPos( );
+        ImGui::PopFont( );
 
         ImGui::End( );
         ImGui::PopStyleColor(2);
-        ImGui::PopStyleVar(2);
+        ImGui::PopStyleVar(3);
     }
 
     void Render( ) {
