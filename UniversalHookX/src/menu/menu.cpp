@@ -35,9 +35,9 @@ namespace Menu {
     static std::vector<Notification> g_notifications;
     static std::mutex g_notificationsMutex;
 
-    void AddNotification(const std::string& title, const std::string& message, float durationSeconds) {
+    void AddNotification(const std::string& title, const std::string& message, float duration) {
         std::lock_guard<std::mutex> lock(g_notificationsMutex);
-        g_notifications.push_back({title, message, durationSeconds});
+        g_notifications.push_back({title, message, duration});
     }
 
     // Returns text truncated so it fits within wrap_width on at most 2 lines, with "..." if cut.
@@ -80,7 +80,7 @@ namespace Menu {
         // so queued notifications don't silently expire while waiting.
         if (!n.started) {
             n.start  = now;
-            n.expiry = now + std::chrono::milliseconds((int)(n.durationSeconds * 1000));
+            n.expiry = now + std::chrono::milliseconds((int)(n.durationSeconds));
             n.started = true;
         }
 
@@ -131,15 +131,14 @@ namespace Menu {
         draw->AddText({cx - 5, cy - 8}, white, "*");
 
         // Title.
-        ImGui::SetCursorPos({70.0f, 12.0f});
+        ImGui::SetCursorPos({60.0f, 12.0f});
         ImGui::TextColored({1.0f, 0.84f, 0.21f, alpha}, "%s", n.title.c_str( ));
 
         // Description — at most 2 lines, truncated with "..." if longer.
-        const float text_x = 70.0f;
-        const float text_w = width - text_x - 12.0f;
+        const float text_w = width - 60.0f - 12.0f;
         const std::string body = TruncateToTwoLines(n.message, text_w);
-        ImGui::SetCursorPos({text_x, 32.0f});
-        ImGui::PushTextWrapPos(text_x + text_w);
+        ImGui::SetCursorPos({60.0f, 32.0f});
+        ImGui::PushTextWrapPos(60.0f + text_w);
         ImGui::TextColored({0.85f, 0.85f, 0.85f, alpha}, "%s", body.c_str( ));
         ImGui::PopTextWrapPos( );
 

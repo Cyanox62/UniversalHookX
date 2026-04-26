@@ -88,12 +88,12 @@ namespace Hooks {
         }
 #endif
 
+        VK::Hook(g_hWindow);
         DX9::Hook(g_hWindow);
         //DX10::Hook(g_hWindow);
         DX11::Hook(g_hWindow);
         DX12::Hook(g_hWindow);
         GL::Hook(g_hWindow);
-        VK::Hook(g_hWindow);
 
 #ifdef DISABLE_LOGGING_CONSOLE
         if (bNoConsole) {
