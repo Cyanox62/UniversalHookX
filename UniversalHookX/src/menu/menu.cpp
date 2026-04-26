@@ -279,7 +279,7 @@ namespace Menu {
         ImGui::SetNextWindowSize({width, height});
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.5f);
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.10f, 0.10f, 0.10f, 0.90f * alpha));
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.10f, 0.10f, 0.10f, alpha));
         ImGui::PushStyleColor(ImGuiCol_Border,   ImVec4(0.83f, 0.68f, 0.21f, alpha));
 
         ImGui::Begin("##notif", nullptr,
