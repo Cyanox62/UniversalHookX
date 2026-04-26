@@ -3,6 +3,8 @@
 
 #ifdef ENABLE_BACKEND_OPENGL
 #include <Windows.h>
+#include <GL/gl.h>
+#pragma comment(lib, "opengl32.lib")
 
 #include <memory>
 
@@ -17,6 +19,16 @@
 
 #include "../../../menu/menu.hpp"
 
+static void* UploadTextureRGBA_GL(const uint8_t* rgba, int w, int h) {
+    GLuint texId = 0;
+    glGenTextures(1, &texId);
+    glBindTexture(GL_TEXTURE_2D, texId);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    return reinterpret_cast<void*>(static_cast<intptr_t>(texId));
+}
+
 static std::add_pointer_t<BOOL WINAPI(HDC)> oWglSwapBuffers;
 static BOOL WINAPI hkWglSwapBuffers(HDC Hdc) {
     if (U::GetRenderingBackend( ) != NONE && U::GetRenderingBackend( ) != OPENGL)
@@ -28,8 +40,10 @@ static BOOL WINAPI hkWglSwapBuffers(HDC Hdc) {
     }
 
     if (!H::bShuttingDown && ImGui::GetCurrentContext( )) {
-        if (!ImGui::GetIO( ).BackendRendererUserData)
+        if (!ImGui::GetIO( ).BackendRendererUserData) {
             ImGui_ImplOpenGL3_Init( );
+            Menu::RegisterTextureUploader(UploadTextureRGBA_GL);
+        }
 
         ImGui_ImplOpenGL3_NewFrame( );
         ImGui_ImplWin32_NewFrame( );

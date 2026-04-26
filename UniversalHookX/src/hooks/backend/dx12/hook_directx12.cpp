@@ -30,6 +30,7 @@
 
 // Data
 static int const NUM_BACK_BUFFERS = 3;
+static UINT const NUM_SRV_DESCRIPTORS = 17;
 static IDXGIFactory4* g_dxgiFactory = NULL;
 static ID3D12Device* g_pd3dDevice = NULL;
 static ID3D12DescriptorHeap* g_pd3dRtvDescHeap = NULL;
@@ -41,6 +42,127 @@ static ID3D12CommandAllocator* g_commandAllocators[NUM_BACK_BUFFERS] = { };
 static ID3D12Resource* g_mainRenderTargetResource[NUM_BACK_BUFFERS] = { };
 static D3D12_CPU_DESCRIPTOR_HANDLE g_mainRenderTargetDescriptor[NUM_BACK_BUFFERS] = { };
 static std::atomic<bool> g_bHookReady = false;
+static UINT g_nextSrvSlot = 1;
+
+static void* UploadTextureRGBA_DX12(const uint8_t* rgba, int w, int h) {
+    if (!g_pd3dDevice || !g_pd3dCommandQueue || !g_pd3dSrvDescHeap)
+        return nullptr;
+    if (g_nextSrvSlot >= NUM_SRV_DESCRIPTORS)
+        return nullptr;
+
+    UINT slot    = g_nextSrvSlot++;
+    UINT srvSize = g_pd3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+    D3D12_HEAP_PROPERTIES heapDefault = {};
+    heapDefault.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+    D3D12_RESOURCE_DESC texDesc = {};
+    texDesc.Dimension          = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    texDesc.Width              = (UINT64)w;
+    texDesc.Height             = (UINT)h;
+    texDesc.DepthOrArraySize   = 1;
+    texDesc.MipLevels          = 1;
+    texDesc.Format             = DXGI_FORMAT_R8G8B8A8_UNORM;
+    texDesc.SampleDesc.Count   = 1;
+    texDesc.Layout             = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    texDesc.Flags              = D3D12_RESOURCE_FLAG_NONE;
+
+    ID3D12Resource* pTexRes = nullptr;
+    if (FAILED(g_pd3dDevice->CreateCommittedResource(&heapDefault, D3D12_HEAP_FLAG_NONE,
+            &texDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&pTexRes)))) {
+        g_nextSrvSlot--;
+        return nullptr;
+    }
+
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT fp;
+    UINT numRows;
+    UINT64 rowSize, totalSize;
+    g_pd3dDevice->GetCopyableFootprints(&texDesc, 0, 1, 0, &fp, &numRows, &rowSize, &totalSize);
+
+    D3D12_HEAP_PROPERTIES heapUpload = {};
+    heapUpload.Type = D3D12_HEAP_TYPE_UPLOAD;
+    D3D12_RESOURCE_DESC bufDesc = {};
+    bufDesc.Dimension          = D3D12_RESOURCE_DIMENSION_BUFFER;
+    bufDesc.Width              = totalSize;
+    bufDesc.Height             = 1;
+    bufDesc.DepthOrArraySize   = 1;
+    bufDesc.MipLevels          = 1;
+    bufDesc.SampleDesc.Count   = 1;
+    bufDesc.Layout             = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+    ID3D12Resource* pUpload = nullptr;
+    if (FAILED(g_pd3dDevice->CreateCommittedResource(&heapUpload, D3D12_HEAP_FLAG_NONE,
+            &bufDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&pUpload)))) {
+        pTexRes->Release();
+        g_nextSrvSlot--;
+        return nullptr;
+    }
+
+    void* pMapped = nullptr;
+    pUpload->Map(0, nullptr, &pMapped);
+    for (UINT row = 0; row < numRows; ++row) {
+        memcpy(reinterpret_cast<uint8_t*>(pMapped) + fp.Offset + (UINT64)row * fp.Footprint.RowPitch,
+               rgba + (size_t)row * (size_t)w * 4,
+               (size_t)w * 4);
+    }
+    pUpload->Unmap(0, nullptr);
+
+    ID3D12CommandAllocator* pTmpAlloc = nullptr;
+    g_pd3dDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&pTmpAlloc));
+    ID3D12GraphicsCommandList* pTmpList = nullptr;
+    g_pd3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pTmpAlloc, nullptr, IID_PPV_ARGS(&pTmpList));
+
+    D3D12_TEXTURE_COPY_LOCATION srcLoc = {};
+    srcLoc.pResource        = pUpload;
+    srcLoc.Type             = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    srcLoc.PlacedFootprint  = fp;
+
+    D3D12_TEXTURE_COPY_LOCATION dstLoc = {};
+    dstLoc.pResource       = pTexRes;
+    dstLoc.Type            = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    dstLoc.SubresourceIndex = 0;
+
+    pTmpList->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, nullptr);
+
+    D3D12_RESOURCE_BARRIER barrier = {};
+    barrier.Type                         = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Transition.pResource         = pTexRes;
+    barrier.Transition.StateBefore       = D3D12_RESOURCE_STATE_COPY_DEST;
+    barrier.Transition.StateAfter        = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    barrier.Transition.Subresource       = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    pTmpList->ResourceBarrier(1, &barrier);
+    pTmpList->Close();
+
+    ID3D12CommandList* lists[] = { pTmpList };
+    g_pd3dCommandQueue->ExecuteCommandLists(1, lists);
+
+    ID3D12Fence* pFence = nullptr;
+    g_pd3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pFence));
+    HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    pFence->SetEventOnCompletion(1, hEvent);
+    g_pd3dCommandQueue->Signal(pFence, 1);
+    WaitForSingleObject(hEvent, INFINITE);
+    CloseHandle(hEvent);
+    pFence->Release();
+    pTmpList->Release();
+    pTmpAlloc->Release();
+    pUpload->Release();
+
+    D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle = g_pd3dSrvDescHeap->GetCPUDescriptorHandleForHeapStart();
+    cpuHandle.ptr += (SIZE_T)slot * srvSize;
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.Format                        = DXGI_FORMAT_R8G8B8A8_UNORM;
+    srvDesc.ViewDimension                 = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Texture2D.MipLevels           = 1;
+    srvDesc.Shader4ComponentMapping       = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    g_pd3dDevice->CreateShaderResourceView(pTexRes, &srvDesc, cpuHandle);
+
+    D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = g_pd3dSrvDescHeap->GetGPUDescriptorHandleForHeapStart();
+    gpuHandle.ptr += (UINT64)slot * srvSize;
+
+    return reinterpret_cast<void*>(static_cast<uintptr_t>(gpuHandle.ptr));
+}
 
 static void CleanupDeviceD3D12( );
 static void CleanupRenderTarget( );
@@ -326,6 +448,7 @@ static void CleanupDeviceD3D12( ) {
     if (g_pd3dSrvDescHeap) {
         g_pd3dSrvDescHeap->Release( );
         g_pd3dSrvDescHeap = NULL;
+        g_nextSrvSlot = 1;
     }
     if (g_pd3dDevice) {
         g_pd3dDevice->Release( );
@@ -371,7 +494,7 @@ static void RenderImGui_DX12(IDXGISwapChain3* pSwapChain) {
             {
                 D3D12_DESCRIPTOR_HEAP_DESC desc = { };
                 desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-                desc.NumDescriptors = 1;
+                desc.NumDescriptors = NUM_SRV_DESCRIPTORS;
                 desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
                 if (g_pd3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&g_pd3dSrvDescHeap)) != S_OK)
                     return;
@@ -389,6 +512,7 @@ static void RenderImGui_DX12(IDXGISwapChain3* pSwapChain) {
                                 DXGI_FORMAT_R8G8B8A8_UNORM, g_pd3dSrvDescHeap,
                                 g_pd3dSrvDescHeap->GetCPUDescriptorHandleForHeapStart( ),
                                 g_pd3dSrvDescHeap->GetGPUDescriptorHandleForHeapStart( ));
+            Menu::RegisterTextureUploader(UploadTextureRGBA_DX12);
         }
     }
 

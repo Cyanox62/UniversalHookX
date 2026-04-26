@@ -36,6 +36,41 @@ static ID3D11DeviceContext* g_pd3dDeviceContext = NULL;
 static ID3D11RenderTargetView* g_pd3dRenderTarget = NULL;
 static IDXGISwapChain* g_pSwapChain = NULL;
 
+static void* UploadTextureRGBA_DX11(const uint8_t* rgba, int w, int h) {
+    if (!g_pd3dDevice) return nullptr;
+
+    D3D11_TEXTURE2D_DESC desc = {};
+    desc.Width            = (UINT)w;
+    desc.Height           = (UINT)h;
+    desc.MipLevels        = 1;
+    desc.ArraySize        = 1;
+    desc.Format           = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.Usage            = D3D11_USAGE_DEFAULT;
+    desc.BindFlags        = D3D11_BIND_SHADER_RESOURCE;
+
+    D3D11_SUBRESOURCE_DATA initData = {};
+    initData.pSysMem     = rgba;
+    initData.SysMemPitch = (UINT)w * 4;
+
+    ID3D11Texture2D* pTex = nullptr;
+    if (FAILED(g_pd3dDevice->CreateTexture2D(&desc, &initData, &pTex)))
+        return nullptr;
+
+    D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.Format                    = DXGI_FORMAT_R8G8B8A8_UNORM;
+    srvDesc.ViewDimension             = D3D11_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Texture2D.MipLevels       = 1;
+
+    ID3D11ShaderResourceView* pSRV = nullptr;
+    if (FAILED(g_pd3dDevice->CreateShaderResourceView(pTex, &srvDesc, &pSRV))) {
+        pTex->Release();
+        return nullptr;
+    }
+    pTex->Release();
+    return pSRV;
+}
+
 static void CleanupDeviceD3D11( );
 static void CleanupRenderTarget( );
 static void RenderImGui_DX11(IDXGISwapChain* pSwapChain);
@@ -321,6 +356,7 @@ static void RenderImGui_DX11(IDXGISwapChain* pSwapChain) {
         if (SUCCEEDED(pSwapChain->GetDevice(IID_PPV_ARGS(&g_pd3dDevice)))) {
             g_pd3dDevice->GetImmediateContext(&g_pd3dDeviceContext);
             ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
+            Menu::RegisterTextureUploader(UploadTextureRGBA_DX11);
         }
     }
 

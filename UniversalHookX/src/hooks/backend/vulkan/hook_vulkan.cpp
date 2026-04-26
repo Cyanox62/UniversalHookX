@@ -32,6 +32,7 @@ static std::vector<VkQueueFamilyProperties> g_QueueFamilies;
 
 static VkPipelineCache g_PipelineCache = VK_NULL_HANDLE;
 static VkDescriptorPool g_DescriptorPool = VK_NULL_HANDLE;
+static VkQueue g_graphicsQueueForUpload = VK_NULL_HANDLE;
 static uint32_t g_MinImageCount = 2;
 static VkRenderPass g_RenderPass = VK_NULL_HANDLE;
 static ImGui_ImplVulkanH_Frame g_Frames[8] = { };
@@ -416,6 +417,151 @@ static void CleanupDeviceVulkan( ) {
     g_Device = NULL;
 }
 
+static void* UploadTextureRGBA_VK(const uint8_t* rgba, int w, int h) {
+    if (!g_Device || g_graphicsQueueForUpload == VK_NULL_HANDLE || !g_DescriptorPool)
+        return nullptr;
+
+    VkDeviceSize imgSize = (VkDeviceSize)w * h * 4;
+
+    VkBufferCreateInfo bufInfo = {};
+    bufInfo.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufInfo.size        = imgSize;
+    bufInfo.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    bufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    VkBuffer stagingBuf = VK_NULL_HANDLE;
+    vkCreateBuffer(g_Device, &bufInfo, g_Allocator, &stagingBuf);
+
+    VkMemoryRequirements stagingReqs;
+    vkGetBufferMemoryRequirements(g_Device, stagingBuf, &stagingReqs);
+
+    VkPhysicalDeviceMemoryProperties memProps;
+    vkGetPhysicalDeviceMemoryProperties(g_PhysicalDevice, &memProps);
+
+    auto findMemType = [&](uint32_t bits, VkMemoryPropertyFlags props) -> uint32_t {
+        for (uint32_t i = 0; i < memProps.memoryTypeCount; ++i)
+            if ((bits & (1u << i)) && (memProps.memoryTypes[i].propertyFlags & props) == props)
+                return i;
+        return 0;
+    };
+
+    VkMemoryAllocateInfo stagingAlloc = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+    stagingAlloc.allocationSize  = stagingReqs.size;
+    stagingAlloc.memoryTypeIndex = findMemType(stagingReqs.memoryTypeBits,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    VkDeviceMemory stagingMem = VK_NULL_HANDLE;
+    vkAllocateMemory(g_Device, &stagingAlloc, g_Allocator, &stagingMem);
+    vkBindBufferMemory(g_Device, stagingBuf, stagingMem, 0);
+
+    void* pMapped;
+    vkMapMemory(g_Device, stagingMem, 0, imgSize, 0, &pMapped);
+    memcpy(pMapped, rgba, (size_t)imgSize);
+    vkUnmapMemory(g_Device, stagingMem);
+
+    VkImageCreateInfo imgInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    imgInfo.imageType     = VK_IMAGE_TYPE_2D;
+    imgInfo.extent        = { (uint32_t)w, (uint32_t)h, 1 };
+    imgInfo.mipLevels     = 1;
+    imgInfo.arrayLayers   = 1;
+    imgInfo.format        = VK_FORMAT_R8G8B8A8_UNORM;
+    imgInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
+    imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imgInfo.usage         = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    imgInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+    imgInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
+    VkImage image = VK_NULL_HANDLE;
+    vkCreateImage(g_Device, &imgInfo, g_Allocator, &image);
+
+    VkMemoryRequirements imgReqs;
+    vkGetImageMemoryRequirements(g_Device, image, &imgReqs);
+    VkMemoryAllocateInfo imgAlloc = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+    imgAlloc.allocationSize  = imgReqs.size;
+    imgAlloc.memoryTypeIndex = findMemType(imgReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    VkDeviceMemory imgMem = VK_NULL_HANDLE;
+    vkAllocateMemory(g_Device, &imgAlloc, g_Allocator, &imgMem);
+    vkBindImageMemory(g_Device, image, imgMem, 0);
+
+    VkCommandPoolCreateInfo cpInfo = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
+    cpInfo.queueFamilyIndex = g_QueueFamily;
+    cpInfo.flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    VkCommandPool cmdPool = VK_NULL_HANDLE;
+    vkCreateCommandPool(g_Device, &cpInfo, g_Allocator, &cmdPool);
+
+    VkCommandBufferAllocateInfo cbInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+    cbInfo.commandPool        = cmdPool;
+    cbInfo.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cbInfo.commandBufferCount = 1;
+    VkCommandBuffer cmdBuf = VK_NULL_HANDLE;
+    vkAllocateCommandBuffers(g_Device, &cbInfo, &cmdBuf);
+
+    VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cmdBuf, &beginInfo);
+
+    VkImageMemoryBarrier barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+    barrier.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+    barrier.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image               = image;
+    barrier.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+    barrier.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+    vkCmdPipelineBarrier(cmdBuf,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+    VkBufferImageCopy region = {};
+    region.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+    region.imageExtent      = { (uint32_t)w, (uint32_t)h, 1 };
+    vkCmdCopyBufferToImage(cmdBuf, stagingBuf, image,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+    barrier.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    vkCmdPipelineBarrier(cmdBuf,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+    vkEndCommandBuffer(cmdBuf);
+
+    VkFenceCreateInfo fenceInfo = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
+    VkFence fence = VK_NULL_HANDLE;
+    vkCreateFence(g_Device, &fenceInfo, g_Allocator, &fence);
+    VkSubmitInfo si = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+    si.commandBufferCount = 1;
+    si.pCommandBuffers    = &cmdBuf;
+    vkQueueSubmit(g_graphicsQueueForUpload, 1, &si, fence);
+    vkWaitForFences(g_Device, 1, &fence, VK_TRUE, UINT64_MAX);
+
+    vkDestroyFence(g_Device, fence, g_Allocator);
+    vkDestroyCommandPool(g_Device, cmdPool, g_Allocator);
+    vkDestroyBuffer(g_Device, stagingBuf, g_Allocator);
+    vkFreeMemory(g_Device, stagingMem, g_Allocator);
+
+    VkImageViewCreateInfo viewInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+    viewInfo.image            = image;
+    viewInfo.viewType         = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.format           = VK_FORMAT_R8G8B8A8_UNORM;
+    viewInfo.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+    VkImageView imageView = VK_NULL_HANDLE;
+    vkCreateImageView(g_Device, &viewInfo, g_Allocator, &imageView);
+
+    VkSamplerCreateInfo samplerInfo = { VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+    samplerInfo.magFilter    = VK_FILTER_LINEAR;
+    samplerInfo.minFilter    = VK_FILTER_LINEAR;
+    samplerInfo.mipmapMode   = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    VkSampler sampler = VK_NULL_HANDLE;
+    vkCreateSampler(g_Device, &samplerInfo, g_Allocator, &sampler);
+
+    VkDescriptorSet ds = ImGui_ImplVulkan_AddTexture(sampler, imageView,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    return reinterpret_cast<void*>(ds);
+}
+
 static void RenderImGui_Vulkan(VkQueue queue, const VkPresentInfoKHR* pPresentInfo) {
     if (U::GetRenderingBackend( ) != NONE && U::GetRenderingBackend( ) != VULKAN)
         return;
@@ -430,6 +576,9 @@ static void RenderImGui_Vulkan(VkQueue queue, const VkPresentInfoKHR* pPresentIn
 
     VkQueue graphicQueue = VK_NULL_HANDLE;
     const bool queueSupportsGraphic = DoesQueueSupportGraphic(queue, &graphicQueue);
+
+    if (g_graphicsQueueForUpload == VK_NULL_HANDLE && queueSupportsGraphic)
+        g_graphicsQueueForUpload = graphicQueue;
 
     Menu::InitializeContext(g_Hwnd);
 
@@ -487,6 +636,7 @@ static void RenderImGui_Vulkan(VkQueue queue, const VkPresentInfoKHR* pPresentIn
             ImGui_ImplVulkan_Init(&init_info, g_RenderPass);
 
             ImGui_ImplVulkan_CreateFontsTexture(fd->CommandBuffer);
+            Menu::RegisterTextureUploader(UploadTextureRGBA_VK);
         }
 
         ImGui_ImplVulkan_NewFrame( );

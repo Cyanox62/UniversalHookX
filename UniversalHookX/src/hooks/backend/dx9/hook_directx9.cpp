@@ -27,6 +27,35 @@
 
 static LPDIRECT3D9 g_pD3D = NULL;
 static LPDIRECT3DDEVICE9 g_pd3dDevice = NULL;
+static IDirect3DDevice9* g_gameDevice = NULL;
+
+static void* UploadTextureRGBA_DX9(const uint8_t* rgba, int w, int h) {
+    if (!g_gameDevice) return nullptr;
+
+    IDirect3DTexture9* pTex = nullptr;
+    if (FAILED(g_gameDevice->CreateTexture((UINT)w, (UINT)h, 1, D3DUSAGE_DYNAMIC,
+            D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &pTex, nullptr)))
+        return nullptr;
+
+    D3DLOCKED_RECT lr;
+    if (FAILED(pTex->LockRect(0, &lr, nullptr, D3DLOCK_DISCARD))) {
+        pTex->Release();
+        return nullptr;
+    }
+
+    for (int y = 0; y < h; ++y) {
+        const uint8_t* src = rgba + (size_t)y * w * 4;
+        uint8_t*       dst = reinterpret_cast<uint8_t*>(lr.pBits) + (size_t)y * lr.Pitch;
+        for (int x = 0; x < w; ++x) {
+            dst[x*4+0] = src[x*4+2];
+            dst[x*4+1] = src[x*4+1];
+            dst[x*4+2] = src[x*4+0];
+            dst[x*4+3] = src[x*4+3];
+        }
+    }
+    pTex->UnlockRect(0);
+    return pTex;
+}
 
 static void CleanupDeviceD3D9( );
 static void RenderImGui_DX9(IDirect3DDevice9* pDevice);
@@ -163,7 +192,9 @@ static void RenderImGui_DX9(IDirect3DDevice9* pDevice) {
     }
 
     if (!ImGui::GetIO( ).BackendRendererUserData) {
+        g_gameDevice = pDevice;
         ImGui_ImplDX9_Init(pDevice);
+        Menu::RegisterTextureUploader(UploadTextureRGBA_DX9);
     }
 
     if (!H::bShuttingDown && ImGui::GetCurrentContext( )) {

@@ -33,7 +33,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
 }
 
 DWORD WINAPI OnProcessAttach(LPVOID lpParam) {
-    //Console::Alloc( );
+    Console::Alloc( );
     LOG("[+] Auto-detecting rendering backend...");
 
     MH_Initialize( );
@@ -55,6 +55,7 @@ struct NotifyPacket {
     char title[128];
     char message[256];
     float duration;
+    char imageUrl[512];  // optional: empty string means no image
 };
 
 static DWORD WINAPI PipeThread(LPVOID) {
@@ -76,8 +77,10 @@ static DWORD WINAPI PipeThread(LPVOID) {
         }
         NotifyPacket pkt{ };
         DWORD read = 0;
-        if (ReadFile(pipe, &pkt, sizeof(pkt), &read, nullptr) && read == sizeof(pkt))
-            Menu::AddNotification(pkt.title, pkt.message, pkt.duration);
+        if (ReadFile(pipe, &pkt, sizeof(pkt), &read, nullptr) && read == sizeof(pkt)) {
+            pkt.imageUrl[sizeof(pkt.imageUrl) - 1] = '\0';
+            Menu::AddNotification(pkt.title, pkt.message, pkt.duration, pkt.imageUrl);
+        }
         DisconnectNamedPipe(pipe);
     }
 }
