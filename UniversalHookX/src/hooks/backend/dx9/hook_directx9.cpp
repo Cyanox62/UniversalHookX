@@ -187,12 +187,19 @@ static void RenderImGui_DX9(IDirect3DDevice9* pDevice) {
         return;
 
     if (U::GetRenderingBackend( ) == NONE) {
+        OutputDebugStringA("[UHX] DX9 Present fired — claiming backend\n");
         LOG("[+] DX9 Present fired — claiming backend\n");
         U::SetRenderingBackend(DIRECTX9);
     }
 
     if (!ImGui::GetIO( ).BackendRendererUserData) {
         g_gameDevice = pDevice;
+        D3DDEVICE_CREATION_PARAMETERS dcp;
+        if (SUCCEEDED(pDevice->GetCreationParameters(&dcp))) {
+            if (ImGui::GetIO( ).BackendPlatformUserData)
+                ImGui_ImplWin32_Shutdown( );
+            ImGui_ImplWin32_Init(dcp.hFocusWindow);
+        }
         ImGui_ImplDX9_Init(pDevice);
         Menu::RegisterTextureUploader(UploadTextureRGBA_DX9);
     }

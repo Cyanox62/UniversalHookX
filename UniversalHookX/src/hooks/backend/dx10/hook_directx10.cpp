@@ -315,6 +315,11 @@ static void RenderImGui_DX10(IDXGISwapChain* pSwapChain) {
 
     if (!ImGui::GetIO( ).BackendRendererUserData) {
         if (SUCCEEDED(pSwapChain->GetDevice(IID_PPV_ARGS(&g_pd3dDevice)))) {
+            DXGI_SWAP_CHAIN_DESC sd;
+            pSwapChain->GetDesc(&sd);
+            if (ImGui::GetIO( ).BackendPlatformUserData)
+                ImGui_ImplWin32_Shutdown( );
+            ImGui_ImplWin32_Init(sd.OutputWindow);
             ImGui_ImplDX10_Init(g_pd3dDevice);
             Menu::RegisterTextureUploader(UploadTextureRGBA_DX10);
         }

@@ -34,6 +34,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
 
 DWORD WINAPI OnProcessAttach(LPVOID lpParam) {
     //Console::Alloc( );
+    OutputDebugStringA("[UHX] Injected!\n");
     LOG("[+] Auto-detecting rendering backend...");
 
     MH_Initialize( );

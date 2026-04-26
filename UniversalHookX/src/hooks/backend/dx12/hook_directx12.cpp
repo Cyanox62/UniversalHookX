@@ -466,6 +466,7 @@ static void RenderImGui_DX12(IDXGISwapChain3* pSwapChain) {
         return;
 
     if (U::GetRenderingBackend( ) == NONE) {
+        OutputDebugStringA("[UHX] DX12 detected — claiming backend\n");
         LOG("[+] DX12 detected — claiming backend\n");
         U::SetRenderingBackend(DIRECTX12);
     }
@@ -509,6 +510,11 @@ static void RenderImGui_DX12(IDXGISwapChain3* pSwapChain) {
                 g_pd3dCommandList->Close( ) != S_OK)
                 return;
 
+            DXGI_SWAP_CHAIN_DESC sd;
+            pSwapChain->GetDesc(&sd);
+            if (ImGui::GetIO( ).BackendPlatformUserData)
+                ImGui_ImplWin32_Shutdown( );
+            ImGui_ImplWin32_Init(sd.OutputWindow);
             ImGui_ImplDX12_Init(g_pd3dDevice, NUM_BACK_BUFFERS,
                                 DXGI_FORMAT_R8G8B8A8_UNORM, g_pd3dSrvDescHeap,
                                 g_pd3dSrvDescHeap->GetCPUDescriptorHandleForHeapStart( ),

@@ -567,6 +567,7 @@ static void RenderImGui_Vulkan(VkQueue queue, const VkPresentInfoKHR* pPresentIn
         return;
 
     if (U::GetRenderingBackend( ) == NONE) {
+        OutputDebugStringA("[UHX] Vulkan Present fired — claiming backend\n");
         LOG("[+] Vulkan Present fired — claiming backend\n");
         U::SetRenderingBackend(VULKAN);
     }
@@ -620,6 +621,9 @@ static void RenderImGui_Vulkan(VkQueue queue, const VkPresentInfoKHR* pPresentIn
         }
 
         if (!ImGui::GetIO( ).BackendRendererUserData) {
+            if (ImGui::GetIO( ).BackendPlatformUserData)
+                ImGui_ImplWin32_Shutdown( );
+            ImGui_ImplWin32_Init(g_Hwnd);
             ImGui_ImplVulkan_InitInfo init_info = { };
             init_info.Instance = g_Instance;
             init_info.PhysicalDevice = g_PhysicalDevice;

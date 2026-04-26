@@ -35,12 +35,18 @@ static BOOL WINAPI hkWglSwapBuffers(HDC Hdc) {
         return oWglSwapBuffers(Hdc);
 
     if (U::GetRenderingBackend( ) == NONE) {
+        OutputDebugStringA("[UHX] OpenGL SwapBuffers fired — claiming backend\n");
         LOG("[+] OpenGL SwapBuffers fired — claiming backend\n");
         U::SetRenderingBackend(OPENGL);
     }
 
     if (!H::bShuttingDown && ImGui::GetCurrentContext( )) {
         if (!ImGui::GetIO( ).BackendRendererUserData) {
+            HWND hwnd = WindowFromDC(Hdc);
+            if (hwnd && ImGui::GetIO( ).BackendPlatformUserData)
+                ImGui_ImplWin32_Shutdown( );
+            if (hwnd)
+                ImGui_ImplWin32_Init(hwnd);
             ImGui_ImplOpenGL3_Init( );
             Menu::RegisterTextureUploader(UploadTextureRGBA_GL);
         }

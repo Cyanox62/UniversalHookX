@@ -354,6 +354,11 @@ static void RenderImGui_DX11(IDXGISwapChain* pSwapChain) {
 
     if (!ImGui::GetIO( ).BackendRendererUserData) {
         if (SUCCEEDED(pSwapChain->GetDevice(IID_PPV_ARGS(&g_pd3dDevice)))) {
+            DXGI_SWAP_CHAIN_DESC sd;
+            pSwapChain->GetDesc(&sd);
+            if (ImGui::GetIO( ).BackendPlatformUserData)
+                ImGui_ImplWin32_Shutdown( );
+            ImGui_ImplWin32_Init(sd.OutputWindow);
             g_pd3dDevice->GetImmediateContext(&g_pd3dDeviceContext);
             ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
             Menu::RegisterTextureUploader(UploadTextureRGBA_DX11);
