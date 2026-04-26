@@ -33,7 +33,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
 }
 
 DWORD WINAPI OnProcessAttach(LPVOID lpParam) {
-    Console::Alloc( );
+    //Console::Alloc( );
     LOG("[+] Auto-detecting rendering backend...");
 
     MH_Initialize( );

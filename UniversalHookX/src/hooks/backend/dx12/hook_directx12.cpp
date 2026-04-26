@@ -272,7 +272,8 @@ static std::add_pointer_t<void WINAPI(ID3D12CommandQueue*, UINT, ID3D12CommandLi
 static void WINAPI hkExecuteCommandLists(ID3D12CommandQueue* pCommandQueue,
                                          UINT NumCommandLists,
                                          ID3D12CommandList* ppCommandLists) {
-    if (!g_pd3dCommandQueue) {
+    if (!g_pd3dCommandQueue &&
+        pCommandQueue->GetDesc().Type == D3D12_COMMAND_LIST_TYPE_DIRECT) {
         g_pd3dCommandQueue = pCommandQueue;
     }
 
@@ -521,7 +522,8 @@ static void RenderImGui_DX12(IDXGISwapChain3* pSwapChain) {
             CreateRenderTarget(pSwapChain);
         }
 
-        if (ImGui::GetCurrentContext( ) && g_pd3dCommandQueue && g_mainRenderTargetResource[0]) {
+        UINT backBufferIdx = pSwapChain->GetCurrentBackBufferIndex( );
+        if (ImGui::GetCurrentContext( ) && g_pd3dCommandQueue && g_mainRenderTargetResource[backBufferIdx]) {
             ImGui_ImplDX12_NewFrame( );
             ImGui_ImplWin32_NewFrame( );
             ImGui::NewFrame( );
@@ -529,8 +531,6 @@ static void RenderImGui_DX12(IDXGISwapChain3* pSwapChain) {
             Menu::Render( );
 
             ImGui::Render( );
-
-            UINT backBufferIdx = pSwapChain->GetCurrentBackBufferIndex( );
             ID3D12CommandAllocator* commandAllocator = g_commandAllocators[backBufferIdx];
             commandAllocator->Reset( );
 
