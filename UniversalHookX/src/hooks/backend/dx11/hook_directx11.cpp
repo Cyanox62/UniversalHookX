@@ -348,6 +348,7 @@ static void RenderImGui_DX11(IDXGISwapChain* pSwapChain) {
             return;
         }
 #endif
+        OutputDebugStringA("[UHX] DX11 Present fired — claiming backend\n");
         LOG("[+] DX11 Present fired — claiming backend\n");
         U::SetRenderingBackend(DIRECTX11);
     }
