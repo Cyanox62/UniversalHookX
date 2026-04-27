@@ -20,12 +20,17 @@
 #include "../../../menu/menu.hpp"
 
 static void* UploadTextureRGBA_GL(const uint8_t* rgba, int w, int h) {
+    GLint prevTex = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTex);
+
     GLuint texId = 0;
     glGenTextures(1, &texId);
     glBindTexture(GL_TEXTURE_2D, texId);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+
+    glBindTexture(GL_TEXTURE_2D, (GLuint)prevTex);
     return reinterpret_cast<void*>(static_cast<intptr_t>(texId));
 }
 
