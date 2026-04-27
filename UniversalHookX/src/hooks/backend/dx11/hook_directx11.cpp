@@ -245,12 +245,12 @@ namespace DX11 {
                 return;
             }
 
+            void** pVTable = *reinterpret_cast<void***>(g_pSwapChain);
+            void** pFactoryVTable = *reinterpret_cast<void***>(pIDXGIFactory);
+
             pIDXGIFactory->Release( );
             pDXGIAdapter->Release( );
             pDXGIDevice->Release( );
-
-            void** pVTable = *reinterpret_cast<void***>(g_pSwapChain);
-            void** pFactoryVTable = *reinterpret_cast<void***>(pIDXGIFactory);
 
             void* fnCreateSwapChain = pFactoryVTable[10];
             void* fnCreateSwapChainForHwndChain = pFactoryVTable[15];
@@ -301,6 +301,10 @@ namespace DX11 {
         }
 
         CleanupDeviceD3D11( );
+    }
+
+    void RenderFrame(IDXGISwapChain* pSwapChain) {
+        RenderImGui_DX11(pSwapChain);
     }
 } // namespace DX11
 

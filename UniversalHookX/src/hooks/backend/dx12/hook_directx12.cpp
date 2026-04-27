@@ -462,10 +462,25 @@ static void CleanupDeviceD3D12( ) {
 }
 
 static void RenderImGui_DX12(IDXGISwapChain3* pSwapChain) {
+#ifdef ENABLE_BACKEND_DX11
+    if (U::GetRenderingBackend( ) == DIRECTX11) {
+        DX11::RenderFrame(reinterpret_cast<IDXGISwapChain*>(pSwapChain));
+        return;
+    }
+#endif
+
     if (U::GetRenderingBackend( ) != NONE && U::GetRenderingBackend( ) != DIRECTX12)
         return;
 
     if (U::GetRenderingBackend( ) == NONE) {
+        ID3D12Device* pDevice12 = nullptr;
+        if (FAILED(pSwapChain->GetDevice(__uuidof(ID3D12Device), (void**)&pDevice12)) || !pDevice12) {
+#ifdef ENABLE_BACKEND_DX11
+            DX11::RenderFrame(reinterpret_cast<IDXGISwapChain*>(pSwapChain));
+#endif
+            return;
+        }
+        pDevice12->Release( );
         OutputDebugStringA("[UHX] DX12 detected — claiming backend\n");
         LOG("[+] DX12 detected — claiming backend\n");
         U::SetRenderingBackend(DIRECTX12);
