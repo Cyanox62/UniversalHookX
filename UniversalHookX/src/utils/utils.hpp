@@ -10,6 +10,8 @@ enum RenderingBackend_t {
 
 	OPENGL,
 	VULKAN,
+
+	DIRECTDRAW,
 };
 
 namespace Utils {

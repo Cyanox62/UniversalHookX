@@ -4,6 +4,7 @@
 
 #include "hooks.hpp"
 
+#include "backend/ddraw/hook_ddraw.hpp"
 #include "backend/dx10/hook_directx10.hpp"
 #include "backend/dx11/hook_directx11.hpp"
 #include "backend/dx12/hook_directx12.hpp"
@@ -94,6 +95,7 @@ namespace Hooks {
         DX11::Hook(g_hWindow);
         DX12::Hook(g_hWindow);
         GL::Hook(g_hWindow);
+        //DDraw::Hook(g_hWindow);
 
 #ifdef DISABLE_LOGGING_CONSOLE
         if (bNoConsole) {
@@ -131,6 +133,9 @@ namespace Hooks {
                 break;
             case VULKAN:
                 VK::Unhook( );
+                break;
+            case DIRECTDRAW:
+                DDraw::Unhook( );
                 break;
         }
     }

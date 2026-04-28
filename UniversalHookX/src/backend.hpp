@@ -13,3 +13,4 @@
 #ifdef _WIN64
 #define ENABLE_BACKEND_VULKAN
 #endif
+#define ENABLE_BACKEND_DDRAW

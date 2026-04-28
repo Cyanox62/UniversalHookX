@@ -1,11 +1,12 @@
 #pragma once
 #include <Windows.h>
+#include <atomic>
 
 namespace Hooks {
 	void Init( );
 	void Free( );
 
-	inline bool bShuttingDown;
+	inline std::atomic<bool> bShuttingDown { false };
 }
 
 namespace H = Hooks;

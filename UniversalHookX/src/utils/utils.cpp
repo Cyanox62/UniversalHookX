@@ -53,6 +53,8 @@ namespace Utils {
 
 			RB2STR(OPENGL);
 			RB2STR(VULKAN);
+
+			RB2STR(DIRECTDRAW);
 		}
 
 		return "NONE/UNKNOWN";
