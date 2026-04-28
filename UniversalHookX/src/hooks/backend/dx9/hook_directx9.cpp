@@ -249,6 +249,12 @@ static void CleanupDeviceD3D9( ) {
 }
 
 static void RenderImGui_DX9(IDirect3DDevice9* pDevice) {
+    static std::atomic<bool> s_rendering { false };
+    bool expected = false;
+    if (!s_rendering.compare_exchange_strong(expected, true))
+        return;
+    struct Guard { ~Guard( ) { s_rendering.store(false); } } g;
+
     if (U::GetRenderingBackend( ) != NONE && U::GetRenderingBackend( ) != DIRECTX9)
         return;
 

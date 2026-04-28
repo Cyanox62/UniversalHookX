@@ -333,6 +333,12 @@ static void CleanupDeviceD3D11( ) {
 }
 
 static void RenderImGui_DX11(IDXGISwapChain* pSwapChain) {
+    static std::atomic<bool> s_rendering { false };
+    bool expected = false;
+    if (!s_rendering.compare_exchange_strong(expected, true))
+        return;
+    struct Guard { ~Guard( ) { s_rendering.store(false); } } g;
+
 #ifdef ENABLE_BACKEND_DX12
     if (U::GetRenderingBackend( ) == DIRECTX12) {
         DX12::RenderFrame(pSwapChain);

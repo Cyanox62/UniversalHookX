@@ -6,6 +6,7 @@
 #include <GL/gl.h>
 #pragma comment(lib, "opengl32.lib")
 
+#include <atomic>
 #include <memory>
 
 #include "hook_opengl.hpp"
@@ -36,6 +37,12 @@ static void* UploadTextureRGBA_GL(const uint8_t* rgba, int w, int h) {
 
 static std::add_pointer_t<BOOL WINAPI(HDC)> oWglSwapBuffers;
 static BOOL WINAPI hkWglSwapBuffers(HDC Hdc) {
+    static std::atomic<bool> s_rendering { false };
+    bool expected = false;
+    if (!s_rendering.compare_exchange_strong(expected, true))
+        return oWglSwapBuffers(Hdc);
+    struct Guard { ~Guard( ) { s_rendering.store(false); } } g;
+
     if (U::GetRenderingBackend( ) != NONE && U::GetRenderingBackend( ) != OPENGL)
         return oWglSwapBuffers(Hdc);
 
