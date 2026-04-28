@@ -202,6 +202,7 @@
     <ClCompile Include="src\dependencies\minhook\hook.c" />
     <ClCompile Include="src\dependencies\minhook\trampoline.c" />
     <ClCompile Include="src\dllmain.cpp" />
+    <ClCompile Include="src\hooks\backend\ddraw\hook_ddraw.cpp" />
     <ClCompile Include="src\hooks\backend\dx11\hook_directx11.cpp" />
     <ClCompile Include="src\hooks\backend\dx12\hook_directx12.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -247,6 +248,7 @@
     <ClInclude Include="src\dependencies\minhook\hde\table64.h" />
     <ClInclude Include="src\dependencies\minhook\MinHook.h" />
     <ClInclude Include="src\dependencies\minhook\trampoline.h" />
+    <ClInclude Include="src\hooks\backend\ddraw\hook_ddraw.hpp" />
     <ClInclude Include="src\hooks\backend\dx11\hook_directx11.hpp" />
     <ClInclude Include="src\hooks\backend\dx12\hook_directx12.hpp" />
     <ClInclude Include="src\hooks\backend\dx9\hook_directx9.hpp" />
