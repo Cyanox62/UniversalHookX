@@ -30,6 +30,9 @@
     <ClCompile Include="src\hooks\backend\vulkan\hook_vulkan.cpp" />
     <ClCompile Include="src\dependencies\imgui\imgui_impl_vulkan.cpp" />
     <ClCompile Include="src\exports.cpp" />
+    <ClCompile Include="src\hooks\backend\ddraw\hook_ddraw.cpp" />
+    <ClCompile Include="src\hooks\backend\dx8\hook_directx8.cpp" />
+    <ClCompile Include="src\dependencies\imgui\imgui_impl_dx8.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\console\console.hpp" />
@@ -65,5 +68,8 @@
     <ClInclude Include="src\menu\menu.hpp" />
     <ClInclude Include="src\hooks\backend\vulkan\hook_vulkan.hpp" />
     <ClInclude Include="src\dependencies\imgui\imgui_impl_vulkan.h" />
+    <ClInclude Include="src\hooks\backend\ddraw\hook_ddraw.hpp" />
+    <ClInclude Include="src\hooks\backend\dx8\hook_directx8.hpp" />
+    <ClInclude Include="src\dependencies\imgui\imgui_impl_dx8.h" />
   </ItemGroup>
 </Project>
