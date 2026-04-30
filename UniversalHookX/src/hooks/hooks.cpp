@@ -9,6 +9,7 @@
 #include "backend/dx11/hook_directx11.hpp"
 #include "backend/dx12/hook_directx12.hpp"
 #include "backend/dx9/hook_directx9.hpp"
+#include "backend/dx8/hook_directx8.hpp"
 
 #include "backend/opengl/hook_opengl.hpp"
 #include "backend/vulkan/hook_vulkan.hpp"
@@ -90,6 +91,7 @@ namespace Hooks {
 #endif
 
         VK::Hook(g_hWindow);
+        //DX8::Hook(g_hWindow);
         DX9::Hook(g_hWindow);
         //DX10::Hook(g_hWindow);
         DX11::Hook(g_hWindow);
@@ -116,6 +118,9 @@ namespace Hooks {
 
         RenderingBackend_t eRenderingBackend = U::GetRenderingBackend( );
         switch (eRenderingBackend) {
+            case DIRECTX8:
+                DX8::Unhook( );
+                break;
             case DIRECTX9:
                 DX9::Unhook( );
                 break;
