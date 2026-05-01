@@ -133,13 +133,11 @@ uintptr_t FindVTableByFunction(HMODULE module, uintptr_t fnAddress) {
     uintptr_t start = (uintptr_t)mi.lpBaseOfDll;
     uintptr_t end = start + mi.SizeOfImage;
 
-    for (uintptr_t i = start; i < end - sizeof(uintptr_t); i += 4) {
+    for (uintptr_t i = start + sizeof(uintptr_t); i < end - sizeof(uintptr_t); i += sizeof(uintptr_t)) {
         if (*reinterpret_cast<uintptr_t*>(i) == fnAddress) {
-            uintptr_t possibleReset = *reinterpret_cast<uintptr_t*>(i - 4);
-
-            if (possibleReset > start && possibleReset < end) {
-                return i - 4;
-            }
+            uintptr_t possibleReset = *reinterpret_cast<uintptr_t*>(i - sizeof(uintptr_t));
+            if (possibleReset > start && possibleReset < end)
+                return i - sizeof(uintptr_t);
         }
     }
     return 0;
@@ -188,18 +186,35 @@ namespace DX8 {
             return;
         }
 
-        uintptr_t match = FindSignature(hD3D8, pattern, mask) - 0x22;
-        if (!match) {
-            log("DX8: Failed to find Present signature.\n");
+        uintptr_t raw = FindSignature(hD3D8, pattern, mask);
+        if (!raw) {
+            log("DX8: Failed to find Present signature.");
+            return;
+        }
+
+        if (raw < 0x22) {
+            log("DX8: Signature match too close to zero to apply offset.");
+            return;
+        }
+
+        uintptr_t match = raw - 0x22;
+
+        MODULEINFO mi = {0};
+        GetModuleInformation(GetCurrentProcess( ), hD3D8, &mi, sizeof(mi));
+        uintptr_t modStart = (uintptr_t)mi.lpBaseOfDll;
+        uintptr_t modEnd   = modStart + mi.SizeOfImage;
+
+        if (match < modStart || match >= modEnd) {
+            logf("DX8: Adjusted address 0x%p is outside d3d8.dll bounds.", (void*)match);
             return;
         }
 
         void* fnPresent = reinterpret_cast<void*>(match);
-        logf("DX8: Derived Present at 0x%p\n", fnPresent);
+        logf("DX8: Derived Present at 0x%p", fnPresent);
 
         unsigned char prologue = *reinterpret_cast<unsigned char*>(fnPresent);
         if (prologue != 0x55 && prologue != 0x8B && prologue != 0x56) {
-            logf("DX8: Sig match failed prologue check (0x%02X)\n", prologue);
+            logf("DX8: Sig match failed prologue check (0x%02X)", prologue);
             return;
         }
 
