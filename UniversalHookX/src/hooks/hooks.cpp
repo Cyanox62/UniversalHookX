@@ -91,7 +91,7 @@ namespace Hooks {
 #endif
 
         VK::Hook(g_hWindow);
-        //DX8::Hook(g_hWindow);
+        DX8::Hook(g_hWindow);
         DX9::Hook(g_hWindow);
         //DX10::Hook(g_hWindow);
         DX11::Hook(g_hWindow);

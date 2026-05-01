@@ -137,6 +137,9 @@
       <AdditionalDependencies>$(CoreLibraryDependencies);d3d8.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>C:\Users\cyano\source\repos\UniversalHookX\UniversalHookX\src\dependencies\DirectX8\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
+    <PostBuildEvent>
+      <Command>copy /Y "$(TargetPath)" "C:\Users\cyano\Documents\Angular\mist\client\apps\electron\src\assets\MistOverlay32.dll"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -176,6 +179,9 @@
       <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
+    <PostBuildEvent>
+      <Command>copy /Y "$(TargetPath)" "C:\Users\cyano\Documents\Angular\mist\client\apps\electron\src\assets\MistOverlay64.dll"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\dependencies\imgui\imgui_impl_dx8.cpp" />
