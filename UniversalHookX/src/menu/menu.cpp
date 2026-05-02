@@ -145,6 +145,17 @@ namespace Menu {
         g_textureUploader = fn;
     }
 
+    void InvalidateDeviceTextures(void (*releaser)(void* tex)) {
+        std::lock_guard<std::mutex> lock(g_notificationsMutex);
+        if (releaser) {
+            for (auto& [url, tex] : g_texCache)
+                if (tex) releaser(tex);
+        }
+        g_texCache.clear();
+        for (auto& n : g_notifications)
+            n.imgTex = nullptr;
+    }
+
     void InitializeContext(HWND hwnd) {
         if (ig::GetCurrentContext( ))
             return;
@@ -241,8 +252,7 @@ namespace Menu {
                 g_texCache[n.imageUrl] = n.imgTex;
         }
 
-        n.img->pixels.clear();
-        n.img->pixels.shrink_to_fit();
+        // Keep pixels alive so they can be re-uploaded if the device is recreated.
         return n.imgTex;
     }
 

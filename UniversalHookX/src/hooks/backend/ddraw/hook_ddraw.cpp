@@ -69,6 +69,10 @@ static void* UploadTextureRGBA_DDraw(const uint8_t* rgba, int w, int h) {
 }
 
 static void DestroyD3D9Resources( ) {
+    Menu::InvalidateDeviceTextures([](void* tex) {
+        static_cast<IDirect3DTexture9*>(tex)->Release( );
+    });
+
     if (ImGui::GetCurrentContext( ) && ImGui::GetIO( ).BackendRendererUserData)
         ImGui_ImplDX9_Shutdown( );
     if (g_pReadback) { g_pReadback->Release( ); g_pReadback = nullptr; }
