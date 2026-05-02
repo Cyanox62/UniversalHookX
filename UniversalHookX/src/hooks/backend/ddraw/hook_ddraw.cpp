@@ -18,8 +18,9 @@
 #include "../../../utils/utils.hpp"
 #include "../../hooks.hpp"
 
-static HWND g_hGameWnd    = NULL;
-static HWND g_hHelperWnd  = NULL; // hidden window used when game owns adapter exclusively
+static HWND     g_hGameWnd    = NULL;
+static HWND     g_hHelperWnd  = NULL;
+static IUnknown* g_pPrimaryIdentity = nullptr; // COM identity of the DDraw primary surface
 static IDirect3D9*        g_pD3D      = nullptr;
 static IDirect3DDevice9*  g_pDevice   = nullptr;
 static IDirect3DSurface9* g_pReadback = nullptr;
@@ -28,6 +29,7 @@ static UINT g_height = 0;
 
 static std::add_pointer_t<HRESULT WINAPI(IDirectDrawSurface7*, IDirectDrawSurface7*, DWORD)> oFlip;
 static std::add_pointer_t<HRESULT WINAPI(IDirectDrawSurface7*, LPRECT, IDirectDrawSurface7*, LPRECT, DWORD, LPDDBLTFX)> oBlt;
+static std::add_pointer_t<HRESULT WINAPI(IDirectDrawSurface7*, DWORD, DWORD, IDirectDrawSurface7*, LPRECT, DWORD)> oBltFast;
 
 static void DebugLog(const char* fmt, ...) {
     char buf[512];
@@ -74,8 +76,6 @@ static void DestroyD3D9Resources( ) {
     if (g_pD3D)      { g_pD3D->Release( );      g_pD3D      = nullptr; }
 }
 
-// Creates a tiny hidden window to use as the D3D9 device window when the game
-// holds exclusive fullscreen (which blocks device creation on the game's HWND).
 static HWND CreateHelperWindow( ) {
     WNDCLASSEXA wc   = { };
     wc.cbSize        = sizeof(wc);
@@ -250,12 +250,14 @@ static void CompositeImGuiIntoDDrawSurface(IDirectDrawSurface7* pDDSurface) {
                  ddsd.ddpfPixelFormat.dwBBitMask);
     }
 
-    UINT copyW = min((UINT)ddsd.dwWidth, g_width);
-    UINT copyH = min((UINT)ddsd.dwHeight, g_height);
+    UINT copyW = min(g_width,  (UINT)ddsd.dwWidth);
+    UINT copyH = min(g_height, (UINT)ddsd.dwHeight);
 
     for (UINT y = 0; y < copyH; ++y) {
-        const uint8_t* srcRow = reinterpret_cast<const uint8_t*>(srcLR.pBits) + (size_t)y * srcLR.Pitch;
-        uint8_t*       dstRow = reinterpret_cast<uint8_t*>(ddsd.lpSurface)    + (size_t)y * ddsd.lPitch;
+        const uint8_t* srcRow = reinterpret_cast<const uint8_t*>(srcLR.pBits)
+                                + (size_t)y * srcLR.Pitch;
+        uint8_t* dstRow = reinterpret_cast<uint8_t*>(ddsd.lpSurface)
+                          + (size_t)y * ddsd.lPitch;
         for (UINT x = 0; x < copyW; ++x) {
             uint8_t sB = srcRow[x * 4 + 0];
             uint8_t sG = srcRow[x * 4 + 1];
@@ -278,6 +280,27 @@ static void CompositeImGuiIntoDDrawSurface(IDirectDrawSurface7* pDDSurface) {
 
     pDDSurface->Unlock(nullptr);
     g_pReadback->UnlockRect( );
+}
+
+static bool IsPrimarySurface(IDirectDrawSurface7* pSurf) {
+    if (!pSurf) return false;
+
+    DDSURFACEDESC2 desc = { };
+    desc.dwSize = sizeof(desc);
+    if (SUCCEEDED(pSurf->GetSurfaceDesc(&desc)) &&
+        (desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE))
+        return true;
+
+    if (g_pPrimaryIdentity) {
+        IUnknown* pUnk = nullptr;
+        if (SUCCEEDED(pSurf->QueryInterface(IID_IUnknown, reinterpret_cast<void**>(&pUnk)))) {
+            bool match = (pUnk == g_pPrimaryIdentity);
+            pUnk->Release( );
+            if (match) return true;
+        }
+    }
+
+    return false;
 }
 
 static HRESULT WINAPI hkFlip(IDirectDrawSurface7* pSurface,
@@ -308,24 +331,24 @@ static HRESULT WINAPI hkBlt(IDirectDrawSurface7* pThis,
     static bool once = false;
     if (!once) { once = true; OutputDebugStringA("[UHX] DDraw: hkBlt fired\n"); }
 
-    if (pSrcSurface) {
-        bool isPresentBlt = false;
-
-        DDSURFACEDESC2 dstDesc = { };
-        dstDesc.dwSize = sizeof(dstDesc);
-        if (SUCCEEDED(pThis->GetSurfaceDesc(&dstDesc)) &&
-            (dstDesc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)) {
-            isPresentBlt = true;
-        }
-
-        if (!isPresentBlt && pDestRect == nullptr && pSrcRect == nullptr)
-            isPresentBlt = true;
-
-        if (isPresentBlt)
-            CompositeImGuiIntoDDrawSurface(pSrcSurface);
-    }
+    if (pSrcSurface)
+        CompositeImGuiIntoDDrawSurface(pSrcSurface);
 
     return oBlt(pThis, pDestRect, pSrcSurface, pSrcRect, dwFlags, pFX);
+}
+
+static HRESULT WINAPI hkBltFast(IDirectDrawSurface7* pThis,
+                                DWORD dwX, DWORD dwY,
+                                IDirectDrawSurface7* pSrcSurface,
+                                LPRECT pSrcRect,
+                                DWORD dwFlags) {
+    static bool once = false;
+    if (!once) { once = true; OutputDebugStringA("[UHX] DDraw: hkBltFast fired\n"); }
+
+    if (pSrcSurface)
+        CompositeImGuiIntoDDrawSurface(pSrcSurface);
+
+    return oBltFast(pThis, dwX, dwY, pSrcSurface, pSrcRect, dwFlags);
 }
 
 namespace DDraw {
@@ -334,7 +357,7 @@ namespace DDraw {
 
         HMODULE hDDrawModule = GetModuleHandleA("ddraw.dll");
         if (!hDDrawModule) {
-            OutputDebugStringA("[!] DDraw: ddraw.dll not loaded — skipping.\n");
+            OutputDebugStringA("[!] DDraw: ddraw.dll not loaded - skipping.\n");
             return;
         }
 
@@ -360,8 +383,10 @@ namespace DDraw {
         sd.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE;
 
         IDirectDrawSurface7* pSurface = nullptr;
+        bool bFullscreenExclusive = false;
         if (FAILED(pDD->CreateSurface(&sd, &pSurface, NULL))) {
             OutputDebugStringA("[UHX] DDraw: Primary surface unavailable, trying offscreen\n");
+            bFullscreenExclusive = true;
             sd.dwFlags        = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT;
             sd.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN;
             sd.dwWidth        = 1;
@@ -371,14 +396,22 @@ namespace DDraw {
                 pDD->Release( );
                 return;
             }
+        } else {
+            IUnknown* pUnk = nullptr;
+            if (SUCCEEDED(pSurface->QueryInterface(IID_IUnknown, reinterpret_cast<void**>(&pUnk)))) {
+                if (g_pPrimaryIdentity) g_pPrimaryIdentity->Release( );
+                g_pPrimaryIdentity = pUnk; // kept alive - used for present-blt detection
+                OutputDebugStringA("[UHX] DDraw: primary identity cached\n");
+            }
         }
 
         void** pVTable = *reinterpret_cast<void***>(pSurface);
-        void* fnBlt  = pVTable[5];
-        void* fnFlip = pVTable[11];
+        void* fnBlt     = pVTable[5];
+        void* fnBltFast = pVTable[7];
+        void* fnFlip    = pVTable[11];
 
-        char buf[128];
-        snprintf(buf, sizeof(buf), "[UHX] DDraw: Blt=%p Flip=%p\n", fnBlt, fnFlip);
+        char buf[192];
+        snprintf(buf, sizeof(buf), "[UHX] DDraw: Blt=%p BltFast=%p Flip=%p\n", fnBlt, fnBltFast, fnFlip);
         OutputDebugStringA(buf);
 
         pSurface->Release( );
@@ -388,16 +421,23 @@ namespace DDraw {
 
         Menu::InitializeContext(hwnd);
 
-        static MH_STATUS bltStatus  = MH_CreateHook(reinterpret_cast<void**>(fnBlt),  &hkBlt,  reinterpret_cast<void**>(&oBlt));
-        static MH_STATUS flipStatus = MH_CreateHook(reinterpret_cast<void**>(fnFlip), &hkFlip, reinterpret_cast<void**>(&oFlip));
+        static MH_STATUS bltStatus     = MH_CreateHook(reinterpret_cast<void**>(fnBlt),     &hkBlt,     reinterpret_cast<void**>(&oBlt));
+        static MH_STATUS bltFastStatus = MH_CreateHook(reinterpret_cast<void**>(fnBltFast), &hkBltFast, reinterpret_cast<void**>(&oBltFast));
+        static MH_STATUS flipStatus    = MH_CreateHook(reinterpret_cast<void**>(fnFlip),    &hkFlip,    reinterpret_cast<void**>(&oFlip));
 
-        LOG("[+] DDraw: MH_CreateHook(Blt)  = %d\n", (int)bltStatus);
-        LOG("[+] DDraw: MH_CreateHook(Flip) = %d\n", (int)flipStatus);
+        LOG("[+] DDraw: MH_CreateHook(Blt)     = %d\n", (int)bltStatus);
+        LOG("[+] DDraw: MH_CreateHook(BltFast) = %d\n", (int)bltFastStatus);
+        LOG("[+] DDraw: MH_CreateHook(Flip)    = %d\n", (int)flipStatus);
 
         MH_EnableHook(fnBlt);
+        MH_EnableHook(fnBltFast);
         MH_EnableHook(fnFlip);
 
         U::SetRenderingBackend(DIRECTDRAW);
+        if (bFullscreenExclusive)
+            OutputDebugStringA("[UHX] DDraw: fullscreen exclusive - claimed DIRECTDRAW\n");
+        else
+            OutputDebugStringA("[UHX] DDraw: windowed - claimed DIRECTDRAW\n");
 
         OutputDebugStringA("[+] DDraw: Hooks installed.\n");
         OutputDebugStringA("[UHX] DDraw::Hook complete.\n");
