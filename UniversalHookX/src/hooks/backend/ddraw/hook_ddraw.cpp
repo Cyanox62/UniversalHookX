@@ -116,7 +116,6 @@ static bool CreateOffscreenD3D9(UINT w, UINT h) {
         return false;
     }
 
-    // First try the game window; if the game has exclusive DDraw this will fail.
     if (!TryCreateDevice(w, h, g_hGameWnd)) {
         DebugLog("[UHX] DDraw: game-window device failed, trying helper window\n");
         if (!g_hHelperWnd)
@@ -191,7 +190,6 @@ static void CompositeImGuiIntoDDrawSurface(IDirectDrawSurface7* pDDSurface) {
     if (H::bShuttingDown || !ImGui::GetCurrentContext( ))
         return;
 
-    // Render ImGui to the offscreen D3D9 device with a transparent background.
     g_pDevice->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_ARGB(0, 0, 0, 0), 1.0f, 0);
 
     ImGui_ImplDX9_NewFrame( );
@@ -206,7 +204,6 @@ static void CompositeImGuiIntoDDrawSurface(IDirectDrawSurface7* pDDSurface) {
         g_pDevice->EndScene( );
     }
 
-    // Read the rendered ImGui frame back to system memory.
     IDirect3DSurface9* pRT = nullptr;
     if (FAILED(g_pDevice->GetRenderTarget(0, &pRT)) || !pRT) {
         OutputDebugStringA("[UHX] DDraw: GetRenderTarget failed\n");
@@ -225,7 +222,6 @@ static void CompositeImGuiIntoDDrawSurface(IDirectDrawSurface7* pDDSurface) {
         return;
     }
 
-    // Lock the DDraw surface for read+write so we can alpha-blend into it.
     DDSURFACEDESC2 ddsd = { };
     ddsd.dwSize = sizeof(ddsd);
     hr = pDDSurface->Lock(nullptr, &ddsd, DDLOCK_WAIT, nullptr);
@@ -247,8 +243,6 @@ static void CompositeImGuiIntoDDrawSurface(IDirectDrawSurface7* pDDSurface) {
                  ddsd.ddpfPixelFormat.dwBBitMask);
     }
 
-    // Alpha-blend ImGui (D3DFMT_A8R8G8B8 = BGRA in memory) onto the DDraw
-    // surface (32bpp BGR, byte layout B G R X, rMask=0xFF0000).
     UINT copyW = min((UINT)ddsd.dwWidth, g_width);
     UINT copyH = min((UINT)ddsd.dwHeight, g_height);
 
@@ -285,9 +279,6 @@ static HRESULT WINAPI hkFlip(IDirectDrawSurface7* pSurface,
     static bool once = false;
     if (!once) { once = true; OutputDebugStringA("[UHX] DDraw: hkFlip fired\n"); }
 
-    // In fullscreen DDraw the game renders into the back buffer then calls Flip.
-    // We must composite ImGui into the back buffer BEFORE the flip so our overlay
-    // ends up on the surface that will be displayed.
     DDSCAPS2 caps = { };
     caps.dwCaps = DDSCAPS_BACKBUFFER;
     IDirectDrawSurface7* pBack = nullptr;
@@ -311,14 +302,11 @@ static HRESULT WINAPI hkBlt(IDirectDrawSurface7* pThis,
     static bool once = false;
     if (!once) { once = true; OutputDebugStringA("[UHX] DDraw: hkBlt fired\n"); }
 
-    // The game blits its back buffer (pSrcSurface) onto the primary (pThis).
-    // Draw ImGui into the source before the blit so it appears on screen.
     IDirectDrawSurface7* target = pSrcSurface ? pSrcSurface : pThis;
     CompositeImGuiIntoDDrawSurface(target);
     return oBlt(pThis, pDestRect, pSrcSurface, pSrcRect, dwFlags, pFX);
 }
 
-// ---------------------------------------------------------------------------
 namespace DDraw {
     void Hook(HWND hwnd) {
         OutputDebugStringA("[UHX] DDraw::Hook start\n");
@@ -376,10 +364,6 @@ namespace DDraw {
         pDD->Release( );
 
         g_hGameWnd = hwnd;
-
-        // D3D9 is created lazily inside CompositeImGuiIntoDDrawSurface once we
-        // know the exact surface dimensions (avoids size mismatch and deferring
-        // the adapter-conflict error until the actual render path).
 
         Menu::InitializeContext(hwnd);
 
