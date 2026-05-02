@@ -97,7 +97,7 @@ namespace Hooks {
         DX11::Hook(g_hWindow);
         DX12::Hook(g_hWindow);
         GL::Hook(g_hWindow);
-        //DDraw::Hook(g_hWindow);
+        DDraw::Hook(g_hWindow);
 
 #ifdef DISABLE_LOGGING_CONSOLE
         if (bNoConsole) {
