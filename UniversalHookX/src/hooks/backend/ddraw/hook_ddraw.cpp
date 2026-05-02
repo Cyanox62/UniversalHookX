@@ -150,31 +150,38 @@ static void CompositeImGuiIntoDDrawSurface(IDirectDrawSurface7* pDDSurface) {
         return;
     struct Guard { ~Guard( ) { s_rendering.store(false); } } guard;
 
-    if (U::GetRenderingBackend( ) != NONE && U::GetRenderingBackend( ) != DIRECTDRAW)
+    if (U::GetRenderingBackend( ) != DIRECTDRAW)
         return;
 
-    // Determine the actual surface dimensions so the D3D9 device matches exactly.
-    DDSURFACEDESC2 surfInfo = { };
-    surfInfo.dwSize = sizeof(surfInfo);
-    if (FAILED(pDDSurface->GetSurfaceDesc(&surfInfo)))
-        return;
-    UINT surfW = surfInfo.dwWidth;
-    UINT surfH = surfInfo.dwHeight;
+    UINT surfW = 0, surfH = 0;
+    {
+        DDSURFACEDESC2 surfInfo = { };
+        surfInfo.dwSize = sizeof(surfInfo);
+        if (SUCCEEDED(pDDSurface->GetSurfaceDesc(&surfInfo))) {
+            surfW = surfInfo.dwWidth;
+            surfH = surfInfo.dwHeight;
+        }
+    }
+    if (surfW == 0 || surfH == 0) {
+        RECT rc = { };
+        if (GetClientRect(g_hGameWnd, &rc) && rc.right > 0 && rc.bottom > 0) {
+            surfW = (UINT)(rc.right  - rc.left);
+            surfH = (UINT)(rc.bottom - rc.top);
+        }
+    }
+    if (surfW == 0 || surfH == 0) {
+        surfW = (UINT)GetSystemMetrics(SM_CXSCREEN);
+        surfH = (UINT)GetSystemMetrics(SM_CYSCREEN);
+    }
     if (surfW == 0 || surfH == 0)
         return;
 
-    // (Re)create D3D9 if it doesn't exist or the surface size changed.
     if (!g_pDevice || surfW != g_width || surfH != g_height) {
         DestroyD3D9Resources( );
         if (!CreateOffscreenD3D9(surfW, surfH)) {
             LOG("[!] DDraw: Failed to create offscreen D3D9 device.\n");
             return;
         }
-    }
-
-    if (U::GetRenderingBackend( ) == NONE) {
-        OutputDebugStringA("[UHX] DDraw hook fired  claiming backend\n");
-        U::SetRenderingBackend(DIRECTDRAW);
     }
 
     if (!ImGui::GetIO( ).BackendRendererUserData) {
@@ -224,7 +231,7 @@ static void CompositeImGuiIntoDDrawSurface(IDirectDrawSurface7* pDDSurface) {
 
     DDSURFACEDESC2 ddsd = { };
     ddsd.dwSize = sizeof(ddsd);
-    hr = pDDSurface->Lock(nullptr, &ddsd, DDLOCK_WAIT, nullptr);
+    hr = pDDSurface->Lock(nullptr, &ddsd, DDLOCK_WAIT | DDLOCK_NOSYSLOCK, nullptr);
     if (FAILED(hr)) {
         DebugLog("[UHX] DDraw: Surface Lock failed hr=0x%08X\n", (unsigned)hr);
         g_pReadback->UnlockRect( );
@@ -286,7 +293,6 @@ static HRESULT WINAPI hkFlip(IDirectDrawSurface7* pSurface,
         CompositeImGuiIntoDDrawSurface(pBack);
         pBack->Release( );
     } else {
-        // No attached back buffer (windowed primary or single-surface), draw on front.
         CompositeImGuiIntoDDrawSurface(pSurface);
     }
 
@@ -302,8 +308,23 @@ static HRESULT WINAPI hkBlt(IDirectDrawSurface7* pThis,
     static bool once = false;
     if (!once) { once = true; OutputDebugStringA("[UHX] DDraw: hkBlt fired\n"); }
 
-    IDirectDrawSurface7* target = pSrcSurface ? pSrcSurface : pThis;
-    CompositeImGuiIntoDDrawSurface(target);
+    if (pSrcSurface) {
+        bool isPresentBlt = false;
+
+        DDSURFACEDESC2 dstDesc = { };
+        dstDesc.dwSize = sizeof(dstDesc);
+        if (SUCCEEDED(pThis->GetSurfaceDesc(&dstDesc)) &&
+            (dstDesc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)) {
+            isPresentBlt = true;
+        }
+
+        if (!isPresentBlt && pDestRect == nullptr && pSrcRect == nullptr)
+            isPresentBlt = true;
+
+        if (isPresentBlt)
+            CompositeImGuiIntoDDrawSurface(pSrcSurface);
+    }
+
     return oBlt(pThis, pDestRect, pSrcSurface, pSrcRect, dwFlags, pFX);
 }
 
@@ -375,6 +396,8 @@ namespace DDraw {
 
         MH_EnableHook(fnBlt);
         MH_EnableHook(fnFlip);
+
+        U::SetRenderingBackend(DIRECTDRAW);
 
         OutputDebugStringA("[+] DDraw: Hooks installed.\n");
         OutputDebugStringA("[UHX] DDraw::Hook complete.\n");
