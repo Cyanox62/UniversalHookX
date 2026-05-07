@@ -15,6 +15,19 @@ enum RenderingBackend_t {
 	DIRECTDRAW,
 };
 
+struct CritSec {
+    CRITICAL_SECTION cs;
+    CritSec( ) { InitializeCriticalSection(&cs); }
+    ~CritSec( ) { DeleteCriticalSection(&cs); }
+    void lock( ) { EnterCriticalSection(&cs); }
+    void unlock( ) { LeaveCriticalSection(&cs); }
+};
+struct CritSecGuard {
+    CritSec& m;
+    CritSecGuard(CritSec& m) : m(m) { m.lock( ); }
+    ~CritSecGuard( ) { m.unlock( ); }
+};
+
 namespace Utils {
 	void SetRenderingBackend(RenderingBackend_t eRenderingBackend);
 	RenderingBackend_t GetRenderingBackend( );

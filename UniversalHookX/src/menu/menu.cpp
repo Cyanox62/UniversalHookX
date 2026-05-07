@@ -3,6 +3,7 @@
 #include "../dependencies/imgui/imgui.h"
 #include "../dependencies/imgui/imgui_impl_win32.h"
 #include "../dependencies/imgui/imgui_internal.h"
+#include "../utils/utils.hpp"
 
 #include <Windows.h>
 #include <winhttp.h>
@@ -13,7 +14,6 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -133,27 +133,41 @@ namespace Menu {
     };
 
     static std::vector<Notification> g_notifications;
-    static std::mutex g_notificationsMutex;
-    static std::unordered_map<std::string, void*> g_texCache;
-    static TextureUploaderFn g_textureUploader = nullptr;
+
+    static CritSec* s_mutex = nullptr;
+    static std::vector<Notification>* s_notifications = nullptr;
+    static std::unordered_map<std::string, void*>* s_texCache = nullptr;
+    static TextureUploaderFn s_textureUploader = nullptr;
+
+    static CritSec& GetNotificationsMutex( ) { return *s_mutex; }
+    static std::vector<Notification>& GetNotifications( ) { return *s_notifications; }
+    static std::unordered_map<std::string, void*>& GetTexCache( ) { return *s_texCache; }
+    static TextureUploaderFn& GetTextureUploader( ) { return s_textureUploader; }
 
     ImFont* g_fontRegular;
     ImFont* g_fontBold;
     ImFont* g_fontBoldLg;
 
     void RegisterTextureUploader(TextureUploaderFn fn) {
-        g_textureUploader = fn;
+        GetTextureUploader( ) = fn;
     }
 
     void InvalidateDeviceTextures(void (*releaser)(void* tex)) {
-        std::lock_guard<std::mutex> lock(g_notificationsMutex);
+        CritSecGuard lock(GetNotificationsMutex( ));
         if (releaser) {
-            for (auto& [url, tex] : g_texCache)
+            for (auto& [url, tex] : GetTexCache())
                 if (tex) releaser(tex);
         }
-        g_texCache.clear();
+        GetTexCache().clear();
         for (auto& n : g_notifications)
             n.imgTex = nullptr;
+    }
+
+    void EagerInit( ) {
+        s_mutex = new CritSec( );
+        s_notifications = new std::vector<Notification>( );
+        s_texCache = new std::unordered_map<std::string, void*>( );
+        s_textureUploader = nullptr;
     }
 
     void InitializeContext(HWND hwnd) {
@@ -193,7 +207,7 @@ namespace Menu {
 
                 if (comInited) CoUninitialize();
 
-                std::lock_guard<std::mutex> lock(g_notificationsMutex);
+                CritSecGuard lock(GetNotificationsMutex( ));
                 Notification n;
                 n.title           = t;
                 n.message         = m;
@@ -203,7 +217,7 @@ namespace Menu {
                 g_notifications.push_back(std::move(n));
             }).detach();
         } else {
-            std::lock_guard<std::mutex> lock(g_notificationsMutex);
+            CritSecGuard lock(GetNotificationsMutex( ));
             Notification n;
             n.title           = title;
             n.message         = message;
@@ -236,8 +250,8 @@ namespace Menu {
         if (n.imgTex) return n.imgTex;
 
         if (!n.imageUrl.empty()) {
-            auto it = g_texCache.find(n.imageUrl);
-            if (it != g_texCache.end()) {
+            auto it = GetTexCache().find(n.imageUrl);
+            if (it != GetTexCache().end()) {
                 n.imgTex = it->second;
                 return n.imgTex;
             }
@@ -246,10 +260,10 @@ namespace Menu {
         if (n.img->state.load(std::memory_order_acquire) != ImgLoad::State::Ready)
             return nullptr;
 
-        if (g_textureUploader && n.img->w > 0 && n.img->h > 0) {
-            n.imgTex = g_textureUploader(n.img->pixels.data(), n.img->w, n.img->h);
+        if (GetTextureUploader( ) && n.img->w > 0 && n.img->h > 0) {
+            n.imgTex = GetTextureUploader( )(n.img->pixels.data( ), n.img->w, n.img->h);
             if (n.imgTex && !n.imageUrl.empty())
-                g_texCache[n.imageUrl] = n.imgTex;
+                GetTexCache()[n.imageUrl] = n.imgTex;
         }
 
         // Keep pixels alive so they can be re-uploaded if the device is recreated.
@@ -257,7 +271,7 @@ namespace Menu {
     }
 
     void RenderNotifications( ) {
-        std::lock_guard<std::mutex> lock(g_notificationsMutex);
+        CritSecGuard lock(GetNotificationsMutex( ));
         auto now = std::chrono::steady_clock::now( );
 
         if (!g_notifications.empty( )) {

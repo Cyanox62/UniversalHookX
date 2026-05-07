@@ -17,9 +17,6 @@ static DWORD WINAPI PipeThread(LPVOID);
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
     if (fdwReason == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(hinstDLL);
-        CreateThread(nullptr, 0, PipeThread, nullptr, 0, nullptr);
-
-        //U::SetRenderingBackend(DIRECTX12);
 
         HANDLE hHandle = CreateThread(NULL, 0, OnProcessAttach, hinstDLL, 0, NULL);
         if (hHandle != NULL) {
@@ -33,12 +30,17 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
 }
 
 DWORD WINAPI OnProcessAttach(LPVOID lpParam) {
-    //Console::Alloc( );
+    // Console::Alloc( );
     OutputDebugStringA("[UHX] Injected!\n");
     LOG("[+] Auto-detecting rendering backend...");
+    Menu::EagerInit( );
 
     MH_Initialize( );
     H::Init( );
+
+    HANDLE hPipe = CreateThread(nullptr, 0, PipeThread, nullptr, 0, nullptr);
+    if (hPipe)
+        CloseHandle(hPipe);
 
     return 0;
 }

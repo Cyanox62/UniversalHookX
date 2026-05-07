@@ -21,10 +21,10 @@
 #include "../dependencies/minhook/MinHook.h"
 
 static HWND g_hWindow = NULL;
-static std::mutex g_mReinitHooksGuard;
+static CritSec* g_mReinitHooksGuard = nullptr;
 
 static DWORD WINAPI ReinitializeGraphicalHooks(LPVOID lpParam) {
-    std::lock_guard<std::mutex> guard{g_mReinitHooksGuard};
+    CritSecGuard guard{*g_mReinitHooksGuard};
 
     LOG("[!] Hooks will reinitialize!\n");
 
@@ -81,6 +81,9 @@ static LRESULT WINAPI WndProc(const HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM 
 
 namespace Hooks {
     void Init( ) {
+        if (!g_mReinitHooksGuard)
+            g_mReinitHooksGuard = new CritSec( );
+
         g_hWindow = U::GetProcessWindow( );
 
 #ifdef DISABLE_LOGGING_CONSOLE
