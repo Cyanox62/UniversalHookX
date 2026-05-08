@@ -230,18 +230,28 @@ namespace DX11 {
         if (g_pd3dDevice) {
             Menu::InitializeContext(hwnd);
 
-            // Hook
+            // Walk the DXGI chain to get the factory for hooking swap-chain creation.
             IDXGIDevice* pDXGIDevice = NULL;
-            g_pd3dDevice->QueryInterface(IID_PPV_ARGS(&pDXGIDevice));
+            if (FAILED(g_pd3dDevice->QueryInterface(IID_PPV_ARGS(&pDXGIDevice))) || !pDXGIDevice) {
+                LOG("[!] DX11: QueryInterface(IDXGIDevice) failed.\n");
+                CleanupDeviceD3D11( );
+                return;
+            }
 
             IDXGIAdapter* pDXGIAdapter = NULL;
-            pDXGIDevice->GetAdapter(&pDXGIAdapter);
+            if (FAILED(pDXGIDevice->GetAdapter(&pDXGIAdapter)) || !pDXGIAdapter) {
+                LOG("[!] DX11: GetAdapter() failed.\n");
+                pDXGIDevice->Release( );
+                CleanupDeviceD3D11( );
+                return;
+            }
 
             IDXGIFactory* pIDXGIFactory = NULL;
-            pDXGIAdapter->GetParent(IID_PPV_ARGS(&pIDXGIFactory));
-
-            if (!pIDXGIFactory) {
-                LOG("[!] pIDXGIFactory is NULL.\n");
+            if (FAILED(pDXGIAdapter->GetParent(IID_PPV_ARGS(&pIDXGIFactory))) || !pIDXGIFactory) {
+                LOG("[!] DX11: GetParent(IDXGIFactory) failed.\n");
+                pDXGIAdapter->Release( );
+                pDXGIDevice->Release( );
+                CleanupDeviceD3D11( );
                 return;
             }
 
@@ -358,8 +368,7 @@ static void RenderImGui_DX11(IDXGISwapChain* pSwapChain) {
             return;
         }
 #endif
-        OutputDebugStringA("[UHX] DX11 Present fired — claiming backend\n");
-        LOG("[+] DX11 Present fired — claiming backend\n");
+        LOG("[UHX] DX11 Present fired — claiming backend\n");
         U::SetRenderingBackend(DIRECTX11);
     }
 

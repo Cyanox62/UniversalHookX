@@ -17,25 +17,6 @@
 #include "../../../dependencies/minhook/MinHook.h"
 #include <Psapi.h>
 
-inline void log(const char* msg) {
-    char buffer[1200];
-    sprintf_s(buffer, "[DX8] %s", msg);
-    OutputDebugStringA(buffer);
-}
-
-inline void logf(const char* format, ...) {
-    char buffer[1024];
-    char finalBuffer[1200];
-
-    va_list args;
-    va_start(args, format);
-    vsnprintf_s(buffer, sizeof(buffer), _TRUNCATE, format, args);
-    va_end(args);
-
-    sprintf_s(finalBuffer, "[DX8] %s", buffer);
-    OutputDebugStringA(finalBuffer);
-}
-
 static IDirect3DDevice8* g_gameDevice = nullptr;
 
 static void* UploadTextureRGBA_DX8(const uint8_t* rgba, int w, int h) {
@@ -80,7 +61,7 @@ static void RenderImGui_DX8(IDirect3DDevice8* pDevice) {
         return;
 
     if (U::GetRenderingBackend( ) == NONE) {
-        LOG("[+] DX8 Present fired — claiming backend\n");
+        LOG("[UHX] DX8 Present fired — claiming backend\n");
         U::SetRenderingBackend(DIRECTX8);
     }
 
@@ -115,7 +96,8 @@ static void RenderImGui_DX8(IDirect3DDevice8* pDevice) {
 
 static std::add_pointer_t<HRESULT WINAPI(IDirect3DDevice8*, D3DPRESENT_PARAMETERS*)> oReset;
 static HRESULT WINAPI hkReset(IDirect3DDevice8* pDevice, D3DPRESENT_PARAMETERS* pPresentationParameters) {
-    ImGui_ImplDX8_InvalidateDeviceObjects( );
+    if (ImGui::GetCurrentContext( ) && ImGui::GetIO( ).BackendRendererUserData)
+        ImGui_ImplDX8_InvalidateDeviceObjects( );
     return oReset(pDevice, pPresentationParameters);
 }
 
@@ -182,18 +164,18 @@ namespace DX8 {
         HMODULE hD3D8 = GetModuleHandleA("d3d8.dll");
 
         if (!hD3D8 || !GetProcAddress(hD3D8, "Direct3DCreate8")) {
-            log("DX8: Direct3DCreate8 not loaded");
+            LOG("[UHX] DX8: Direct3DCreate8 not loaded\n");
             return;
         }
 
         uintptr_t raw = FindSignature(hD3D8, pattern, mask);
         if (!raw) {
-            log("DX8: Failed to find Present signature.");
+            LOG("[UHX] DX8: Failed to find Present signature.\n");
             return;
         }
 
         if (raw < 0x22) {
-            log("DX8: Signature match too close to zero to apply offset.");
+            LOG("[UHX] DX8: Signature match too close to zero to apply offset.\n");
             return;
         }
 
@@ -205,38 +187,38 @@ namespace DX8 {
         uintptr_t modEnd   = modStart + mi.SizeOfImage;
 
         if (match < modStart || match >= modEnd) {
-            logf("DX8: Adjusted address 0x%p is outside d3d8.dll bounds.", (void*)match);
+            LOG("[UHX] DX8: Adjusted address 0x%p is outside d3d8.dll bounds.\n", (void*)match);
             return;
         }
 
         void* fnPresent = reinterpret_cast<void*>(match);
-        logf("DX8: Derived Present at 0x%p", fnPresent);
+        LOG("[UHX] DX8: Derived Present at 0x%p\n", fnPresent);
 
         unsigned char prologue = *reinterpret_cast<unsigned char*>(fnPresent);
         if (prologue != 0x55 && prologue != 0x8B && prologue != 0x56) {
-            logf("DX8: Sig match failed prologue check (0x%02X)", prologue);
+            LOG("[UHX] DX8: Sig match failed prologue check (0x%02X)\n", prologue);
             return;
         }
 
         uintptr_t resetVTableEntry = FindVTableByFunction(hD3D8, match);
         if (!resetVTableEntry) {
-            log("DX8: Could not derive Reset from VTable.\n");
+            LOG("[UHX] DX8: Could not derive Reset from VTable.\n");
             return;
         }
 
         void* fnReset = (void*)*reinterpret_cast<uintptr_t*>(resetVTableEntry);
-        logf("DX8: Derived Reset at 0x%p\n", fnReset);
+        LOG("[UHX] DX8: Derived Reset at 0x%p\n", fnReset);
 
         Menu::InitializeContext(hwnd);
 
         if (MH_CreateHook(reinterpret_cast<void*>(fnReset), &hkReset, reinterpret_cast<void**>(&oReset)) == MH_OK) {
             MH_EnableHook(reinterpret_cast<void*>(fnReset));
-            log("DX8: Hooked Reset.\n");
+            LOG("[UHX] DX8: Hooked Reset.\n");
         }
 
         if (MH_CreateHook(reinterpret_cast<void*>(fnPresent), &hkPresent, reinterpret_cast<void**>(&oPresent)) == MH_OK) {
             MH_EnableHook(reinterpret_cast<void*>(fnPresent));
-            log("DX8: Hooked Present.\n");
+            LOG("[UHX] DX8: Hooked Present.\n");
         }
     }
 

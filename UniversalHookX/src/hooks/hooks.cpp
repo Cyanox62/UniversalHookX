@@ -23,10 +23,23 @@
 static HWND g_hWindow = NULL;
 static CritSec* g_mReinitHooksGuard = nullptr;
 
+static void CallHookSafe(void (*fn)(HWND), HWND hwnd, const char* name) {
+    __try {
+        fn(hwnd);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "[UHX] Exception caught in %s::Hook() — skipping backend.\n", name);
+        OutputDebugStringA(buf);
+    }
+}
+
 static DWORD WINAPI ReinitializeGraphicalHooks(LPVOID lpParam) {
+    if (!g_mReinitHooksGuard)
+        return 0;
+
     CritSecGuard guard{*g_mReinitHooksGuard};
 
-    LOG("[!] Hooks will reinitialize!\n");
+    LOG("[UHX] Hooks will reinitialize!\n");
 
     HWND hNewWindow = U::GetProcessWindow( );
     while (hNewWindow == reinterpret_cast<HWND>(lpParam)) {
@@ -69,12 +82,10 @@ static LRESULT WINAPI WndProc(const HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM 
     LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
     if (Menu::bShowMenu) {
         ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam);
-
-        // (Doesn't work for some games like 'Sid Meier's Civilization VI')
-        // Window may not maximize from taskbar because 'H::bShowDemoWindow' is set to true by default. ('hooks.hpp')
-        //
-        // return ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam) == 0;
     }
+
+    if (!oWndProc)
+        return DefWindowProcW(hWnd, uMsg, wParam, lParam);
 
     return CallWindowProc(oWndProc, hWnd, uMsg, wParam, lParam);
 }
@@ -86,34 +97,24 @@ namespace Hooks {
 
         g_hWindow = U::GetProcessWindow( );
 
-#ifdef DISABLE_LOGGING_CONSOLE
-        bool bNoConsole = GetConsoleWindow( ) == NULL;
-        if (bNoConsole) {
-            AllocConsole( );
-        }
-#endif
-
-        VK::Hook(g_hWindow);
-        DX8::Hook(g_hWindow);
-        DX9::Hook(g_hWindow);
-        //DX10::Hook(g_hWindow);
-        DX11::Hook(g_hWindow);
-        DX12::Hook(g_hWindow);
-        GL::Hook(g_hWindow);
-        DDraw::Hook(g_hWindow);
-
-#ifdef DISABLE_LOGGING_CONSOLE
-        if (bNoConsole) {
-            FreeConsole( );
-        }
-#endif
+        CallHookSafe(VK::Hook,    g_hWindow, "VK");
+        CallHookSafe(DX8::Hook,   g_hWindow, "DX8");
+        CallHookSafe(DX9::Hook,   g_hWindow, "DX9");
+        //CallHookSafe(DX10::Hook, g_hWindow, "DX10");
+        CallHookSafe(DX11::Hook,  g_hWindow, "DX11");
+        CallHookSafe(DX12::Hook,  g_hWindow, "DX12");
+        CallHookSafe(GL::Hook,    g_hWindow, "GL");
+        CallHookSafe(DDraw::Hook, g_hWindow, "DDraw");
 
         oWndProc = reinterpret_cast<WNDPROC>(SetWindowLongPtr(g_hWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WndProc)));
+        if (!oWndProc)
+            LOG("[UHX] SetWindowLongPtr failed (GWLP_WNDPROC).\n");
     }
 
     void Free( ) {
-        if (oWndProc) {
+        if (oWndProc && g_hWindow) {
             SetWindowLongPtr(g_hWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(oWndProc));
+            oWndProc = nullptr;
         }
 
         MH_DisableHook(MH_ALL_HOOKS);
@@ -144,6 +145,8 @@ namespace Hooks {
                 break;
             case DIRECTDRAW:
                 DDraw::Unhook( );
+                break;
+            default:
                 break;
         }
     }

@@ -30,12 +30,14 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
 }
 
 DWORD WINAPI OnProcessAttach(LPVOID lpParam) {
-    // Console::Alloc( );
-    OutputDebugStringA("[UHX] Injected!\n");
-    LOG("[+] Auto-detecting rendering backend...");
+    LOG("[UHX] Injected!\n");
+    LOG("[UHX] Auto-detecting rendering backend...\n");
     Menu::EagerInit( );
 
-    MH_Initialize( );
+    if (MH_Initialize( ) != MH_OK) {
+        LOG("[UHX] MH_Initialize() failed — aborting hook setup.\n");
+        return 1;
+    }
     H::Init( );
 
     HANDLE hPipe = CreateThread(nullptr, 0, PipeThread, nullptr, 0, nullptr);

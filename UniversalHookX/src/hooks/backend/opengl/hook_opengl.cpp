@@ -47,8 +47,7 @@ static BOOL WINAPI hkWglSwapBuffers(HDC Hdc) {
         return oWglSwapBuffers(Hdc);
 
     if (U::GetRenderingBackend( ) == NONE) {
-        OutputDebugStringA("[UHX] OpenGL SwapBuffers fired — claiming backend\n");
-        LOG("[+] OpenGL SwapBuffers fired — claiming backend\n");
+        LOG("[UHX] OpenGL SwapBuffers fired — claiming backend\n");
         U::SetRenderingBackend(OPENGL);
     }
 

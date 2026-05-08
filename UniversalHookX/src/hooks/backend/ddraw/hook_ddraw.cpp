@@ -49,15 +49,6 @@ using D3D7GetRenderTarget_t = HRESULT(WINAPI*)(IUnknown*, IDirectDrawSurface7**)
 static D3D7CreateDevice_t oD3D7CreateDevice = nullptr;
 static D3D7EndScene_t     oD3D7EndScene     = nullptr;
 
-static void DebugLog(const char* fmt, ...) {
-    char buf[512];
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, args);
-    va_end(args);
-    OutputDebugStringA(buf);
-}
-
 static void* UploadTextureRGBA_DDraw(const uint8_t* rgba, int w, int h) {
     if (!g_pDevice)
         return nullptr;
@@ -129,23 +120,23 @@ static bool TryCreateDevice(UINT w, UINT h, HWND devWnd) {
             D3DCREATE_SOFTWARE_VERTEXPROCESSING | D3DCREATE_NOWINDOWCHANGES | D3DCREATE_MULTITHREADED | D3DCREATE_FPU_PRESERVE,
             &pp, &g_pDevice);
     if (FAILED(hr))
-        DebugLog("[UHX] DDraw: TryCreateDevice failed hr=0x%08X on hwnd=%p\n", (unsigned)hr, (void*)devWnd);
+        LOG("[UHX] DDraw: TryCreateDevice failed hr=0x%08X on hwnd=%p\n", (unsigned)hr, (void*)devWnd);
     return SUCCEEDED(hr);
 }
 
 static bool CreateOffscreenD3D9(UINT w, UINT h) {
     g_pD3D = Direct3DCreate9(D3D_SDK_VERSION);
     if (!g_pD3D) {
-        OutputDebugStringA("[UHX] DDraw: Direct3DCreate9 failed\n");
+        LOG("[UHX] DDraw: Direct3DCreate9 failed\n");
         return false;
     }
 
     if (!TryCreateDevice(w, h, g_hGameWnd)) {
-        DebugLog("[UHX] DDraw: game-window device failed, trying helper window\n");
+        LOG("[UHX] DDraw: game-window device failed, trying helper window\n");
         if (!g_hHelperWnd)
             g_hHelperWnd = CreateHelperWindow( );
         if (!g_hHelperWnd || !TryCreateDevice(w, h, g_hHelperWnd)) {
-            DebugLog("[UHX] DDraw: CreateDevice failed on both windows\n");
+            LOG("[UHX] DDraw: CreateDevice failed on both windows\n");
             g_pD3D->Release( );
             g_pD3D = nullptr;
             return false;
@@ -155,7 +146,7 @@ static bool CreateOffscreenD3D9(UINT w, UINT h) {
     HRESULT hr = g_pDevice->CreateOffscreenPlainSurface(
         w, h, D3DFMT_A8R8G8B8, D3DPOOL_SYSTEMMEM, &g_pReadback, nullptr);
     if (FAILED(hr)) {
-        DebugLog("[UHX] DDraw: CreateOffscreenPlainSurface failed hr=0x%08X\n", (unsigned)hr);
+        LOG("[UHX] DDraw: CreateOffscreenPlainSurface failed hr=0x%08X\n", (unsigned)hr);
         g_pDevice->Release( ); g_pDevice = nullptr;
         g_pD3D->Release( );   g_pD3D   = nullptr;
         return false;
@@ -163,7 +154,7 @@ static bool CreateOffscreenD3D9(UINT w, UINT h) {
 
     g_width  = w;
     g_height = h;
-    DebugLog("[UHX] DDraw: Offscreen D3D9 ready %ux%u\n", w, h);
+    LOG("[UHX] DDraw: Offscreen D3D9 ready %ux%u\n", w, h);
     return true;
 }
 
@@ -198,12 +189,12 @@ static void CompositeImGuiIntoDDrawSurface(IDirectDrawSurface7* pDDSurface) {
         surfH = (UINT)GetSystemMetrics(SM_CYSCREEN);
     }
     if (surfW == 0 || surfH == 0) {
-        OutputDebugStringA("[UHX] DDraw: composite - could not determine surface dimensions\n");
+        LOG("[UHX] DDraw: composite - could not determine surface dimensions\n");
         return;
     }
 
     if (!g_pDevice || surfW != g_width || surfH != g_height) {
-        DebugLog("[UHX] DDraw: (re)creating D3D9 offscreen %ux%u\n", surfW, surfH);
+        LOG("[UHX] DDraw: (re)creating D3D9 offscreen %ux%u\n", surfW, surfH);
         DestroyD3D9Resources( );
         if (!CreateOffscreenD3D9(surfW, surfH)) {
             LOG("[!] DDraw: Failed to create offscreen D3D9 device.\n");
@@ -212,13 +203,13 @@ static void CompositeImGuiIntoDDrawSurface(IDirectDrawSurface7* pDDSurface) {
     }
 
     if (!ImGui::GetIO( ).BackendRendererUserData) {
-        OutputDebugStringA("[UHX] DDraw: initializing ImGui\n");
+        LOG("[UHX] DDraw: initializing ImGui\n");
         if (ImGui::GetIO( ).BackendPlatformUserData)
             ImGui_ImplWin32_Shutdown( );
         ImGui_ImplWin32_Init(g_hGameWnd);
         ImGui_ImplDX9_Init(g_pDevice);
         Menu::RegisterTextureUploader(UploadTextureRGBA_DDraw);
-        OutputDebugStringA("[UHX] DDraw: ImGui initialized\n");
+        LOG("[UHX] DDraw: ImGui initialized\n");
     }
 
     if (H::bShuttingDown || !ImGui::GetCurrentContext( ))
@@ -240,19 +231,19 @@ static void CompositeImGuiIntoDDrawSurface(IDirectDrawSurface7* pDDSurface) {
 
     IDirect3DSurface9* pRT = nullptr;
     if (FAILED(g_pDevice->GetRenderTarget(0, &pRT)) || !pRT) {
-        OutputDebugStringA("[UHX] DDraw: GetRenderTarget failed\n");
+        LOG("[UHX] DDraw: GetRenderTarget failed\n");
         return;
     }
     HRESULT hr = g_pDevice->GetRenderTargetData(pRT, g_pReadback);
     pRT->Release( );
     if (FAILED(hr)) {
-        DebugLog("[UHX] DDraw: GetRenderTargetData failed hr=0x%08X\n", (unsigned)hr);
+        LOG("[UHX] DDraw: GetRenderTargetData failed hr=0x%08X\n", (unsigned)hr);
         return;
     }
 
     D3DLOCKED_RECT srcLR;
     if (FAILED(g_pReadback->LockRect(&srcLR, nullptr, D3DLOCK_READONLY))) {
-        OutputDebugStringA("[UHX] DDraw: readback LockRect failed\n");
+        LOG("[UHX] DDraw: readback LockRect failed\n");
         return;
     }
 
@@ -260,11 +251,11 @@ static void CompositeImGuiIntoDDrawSurface(IDirectDrawSurface7* pDDSurface) {
     ddsd.dwSize = sizeof(ddsd);
     hr = pDDSurface->Lock(nullptr, &ddsd, DDLOCK_WAIT | DDLOCK_NOSYSLOCK, nullptr);
     if (FAILED(hr)) {
-        DebugLog("[UHX] DDraw: Lock(NOSYSLOCK) failed hr=0x%08X, retrying without\n", (unsigned)hr);
+        LOG("[UHX] DDraw: Lock(NOSYSLOCK) failed hr=0x%08X, retrying without\n", (unsigned)hr);
         hr = pDDSurface->Lock(nullptr, &ddsd, DDLOCK_WAIT, nullptr);
     }
     if (FAILED(hr)) {
-        DebugLog("[UHX] DDraw: Surface Lock failed hr=0x%08X\n", (unsigned)hr);
+        LOG("[UHX] DDraw: Surface Lock failed hr=0x%08X\n", (unsigned)hr);
         g_pReadback->UnlockRect( );
         return;
     }
@@ -272,14 +263,14 @@ static void CompositeImGuiIntoDDrawSurface(IDirectDrawSurface7* pDDSurface) {
     static bool s_formatLogged = false;
     if (!s_formatLogged) {
         s_formatLogged = true;
-        DebugLog("[UHX] DDraw: surface bpp=%lu pitch=%ld size=%lux%lu "
-                 "rMask=0x%08lX gMask=0x%08lX bMask=0x%08lX\n",
-                 ddsd.ddpfPixelFormat.dwRGBBitCount,
-                 ddsd.lPitch,
-                 ddsd.dwWidth, ddsd.dwHeight,
-                 ddsd.ddpfPixelFormat.dwRBitMask,
-                 ddsd.ddpfPixelFormat.dwGBitMask,
-                 ddsd.ddpfPixelFormat.dwBBitMask);
+        LOG("[UHX] DDraw: surface bpp=%lu pitch=%ld size=%lux%lu "
+            "rMask=0x%08lX gMask=0x%08lX bMask=0x%08lX\n",
+            ddsd.ddpfPixelFormat.dwRGBBitCount,
+            ddsd.lPitch,
+            ddsd.dwWidth, ddsd.dwHeight,
+            ddsd.ddpfPixelFormat.dwRBitMask,
+            ddsd.ddpfPixelFormat.dwGBitMask,
+            ddsd.ddpfPixelFormat.dwBBitMask);
     }
 
     DWORD bpp   = ddsd.ddpfPixelFormat.dwRGBBitCount;
@@ -366,7 +357,7 @@ static void CompositeImGuiIntoDDrawSurface(IDirectDrawSurface7* pDDSurface) {
         static bool s_unknownFmtLogged = false;
         if (!s_unknownFmtLogged) {
             s_unknownFmtLogged = true;
-            DebugLog("[UHX] DDraw: unsupported surface bpp=%lu - cannot composite\n", bpp);
+            LOG("[UHX] DDraw: unsupported surface bpp=%lu - cannot composite\n", bpp);
         }
     }
 
@@ -399,7 +390,7 @@ static HRESULT WINAPI hkFlip(IDirectDrawSurface7* pSurface,
                              IDirectDrawSurface7* pTargetSurface,
                              DWORD dwFlags) {
     static bool once = false;
-    if (!once) { once = true; OutputDebugStringA("[UHX] DDraw: hkFlip first call\n"); }
+    if (!once) { once = true; LOG("[UHX] DDraw: hkFlip first call\n"); }
 
     bool composedInEndScene = g_bComposedThisFrame;
     g_bComposedThisFrame = false;
@@ -416,7 +407,7 @@ static HRESULT WINAPI hkFlip(IDirectDrawSurface7* pSurface,
         }
     } else {
         static bool once2 = false;
-        if (!once2) { once2 = true; OutputDebugStringA("[UHX] DDraw: hkFlip skip composite (D3D7 EndScene handled it)\n"); }
+        if (!once2) { once2 = true; LOG("[UHX] DDraw: hkFlip skip composite (D3D7 EndScene handled it)\n"); }
     }
 
     return oFlip(pSurface, pTargetSurface, dwFlags);
@@ -429,7 +420,7 @@ static HRESULT WINAPI hkBlt(IDirectDrawSurface7* pThis,
                             DWORD dwFlags,
                             LPDDBLTFX pFX) {
     static bool once = false;
-    if (!once) { once = true; OutputDebugStringA("[UHX] DDraw: hkBlt first call\n"); }
+    if (!once) { once = true; LOG("[UHX] DDraw: hkBlt first call\n"); }
 
     if (!g_bComposedThisFrame && pSrcSurface)
         CompositeImGuiIntoDDrawSurface(pSrcSurface);
@@ -443,7 +434,7 @@ static HRESULT WINAPI hkBltFast(IDirectDrawSurface7* pThis,
                                 LPRECT pSrcRect,
                                 DWORD dwFlags) {
     static bool once = false;
-    if (!once) { once = true; OutputDebugStringA("[UHX] DDraw: hkBltFast first call\n"); }
+    if (!once) { once = true; LOG("[UHX] DDraw: hkBltFast first call\n"); }
 
     if (!g_bComposedThisFrame && pSrcSurface)
         CompositeImGuiIntoDDrawSurface(pSrcSurface);
@@ -453,7 +444,7 @@ static HRESULT WINAPI hkBltFast(IDirectDrawSurface7* pThis,
 
 static HRESULT WINAPI hkD3D7EndScene(IUnknown* pDevice) {
     static bool once = false;
-    if (!once) { once = true; OutputDebugStringA("[UHX] D3D7: hkD3D7EndScene first call\n"); }
+    if (!once) { once = true; LOG("[UHX] D3D7: hkD3D7EndScene first call\n"); }
 
     // Call the original EndScene first so the full frame is rendered before we composite.
     HRESULT hr = oD3D7EndScene(pDevice);
@@ -466,10 +457,10 @@ static HRESULT WINAPI hkD3D7EndScene(IUnknown* pDevice) {
         HRESULT hrRT = fnGetRT(pDevice, &pRT);
         if (FAILED(hrRT) || !pRT) {
             static bool rtFailed = false;
-            if (!rtFailed) { rtFailed = true; DebugLog("[UHX] D3D7: GetRenderTarget failed hr=0x%08X\n", (unsigned)hrRT); }
+            if (!rtFailed) { rtFailed = true; LOG("[UHX] D3D7: GetRenderTarget failed hr=0x%08X\n", (unsigned)hrRT); }
         } else {
             static bool rtOnce = false;
-            if (!rtOnce) { rtOnce = true; DebugLog("[UHX] D3D7: compositing via EndScene, pRT=%p\n", (void*)pRT); }
+            if (!rtOnce) { rtOnce = true; LOG("[UHX] D3D7: compositing via EndScene, pRT=%p\n", (void*)pRT); }
             CompositeImGuiIntoDDrawSurface(pRT);
             pRT->Release( );
             g_bComposedThisFrame = true;
@@ -483,7 +474,7 @@ static HRESULT WINAPI hkD3D7CreateDevice(IUnknown*           pD3D7,
                                           REFCLSID             rclsid,
                                           IDirectDrawSurface7* pSurface,
                                           IUnknown**           ppDevice) {
-    OutputDebugStringA("[UHX] D3D7: hkD3D7CreateDevice fired\n");
+    LOG("[UHX] D3D7: hkD3D7CreateDevice fired\n");
 
     HRESULT hr = oD3D7CreateDevice(pD3D7, rclsid, pSurface, ppDevice);
 
@@ -491,28 +482,22 @@ static HRESULT WINAPI hkD3D7CreateDevice(IUnknown*           pD3D7,
         void** vt = *reinterpret_cast<void***>(*ppDevice);
         void*  fnEndScene = vt[D3D7DEV_VTI_EndScene];
 
-        char buf[256];
-        snprintf(buf, sizeof(buf),
-                 "[UHX] D3D7: Device created ppDevice=%p EndScene=%p\n",
-                 (void*)*ppDevice, fnEndScene);
-        OutputDebugStringA(buf);
+        LOG("[UHX] D3D7: Device created ppDevice=%p EndScene=%p\n",
+            (void*)*ppDevice, fnEndScene);
 
         static bool bEndSceneHooked = false;
         if (!bEndSceneHooked) {
             bEndSceneHooked = true;
             MH_STATUS st = MH_CreateHook(fnEndScene, &hkD3D7EndScene,
                                          reinterpret_cast<void**>(&oD3D7EndScene));
-            snprintf(buf, sizeof(buf),
-                     "[UHX] D3D7: MH_CreateHook(EndScene)=%d addr=%p\n",
-                     (int)st, fnEndScene);
-            OutputDebugStringA(buf);
+            LOG("[UHX] D3D7: MH_CreateHook(EndScene)=%d addr=%p\n", (int)st, fnEndScene);
 
             if (st == MH_OK || st == MH_ERROR_ALREADY_CREATED) {
                 MH_EnableHook(fnEndScene);
-                OutputDebugStringA("[UHX] D3D7: EndScene hook enabled\n");
+                LOG("[UHX] D3D7: EndScene hook enabled\n");
                 g_bHasD3D7Device = true;
             } else {
-                OutputDebugStringA("[UHX] D3D7: EndScene hook FAILED\n");
+                LOG("[UHX] D3D7: EndScene hook FAILED\n");
             }
         }
     }
@@ -523,39 +508,34 @@ static HRESULT WINAPI hkD3D7CreateDevice(IUnknown*           pD3D7,
 static void HookD3D7(IDirectDraw7* pDD) {
     HMODULE hD3DIM = GetModuleHandleA("d3dim700.dll");
     if (!hD3DIM) {
-        OutputDebugStringA("[UHX] D3D7: d3dim700.dll not loaded, skipping D3D7 device hook\n");
+        LOG("[UHX] D3D7: d3dim700.dll not loaded, skipping D3D7 device hook\n");
         return;
     }
-    OutputDebugStringA("[UHX] D3D7: d3dim700.dll present, hooking IDirect3D7::CreateDevice\n");
+    LOG("[UHX] D3D7: d3dim700.dll present, hooking IDirect3D7::CreateDevice\n");
 
     IUnknown* pD3D7 = nullptr;
     HRESULT hr = pDD->QueryInterface(IID_IDirect3D7_UHX, reinterpret_cast<void**>(&pD3D7));
     if (FAILED(hr) || !pD3D7) {
-        DebugLog("[UHX] D3D7: QueryInterface(IDirect3D7) failed hr=0x%08X\n", (unsigned)hr);
+        LOG("[UHX] D3D7: QueryInterface(IDirect3D7) failed hr=0x%08X\n", (unsigned)hr);
         return;
     }
-    OutputDebugStringA("[UHX] D3D7: Got IDirect3D7 interface\n");
+    LOG("[UHX] D3D7: Got IDirect3D7 interface\n");
 
-    // vtable[4] = IDirect3D7::CreateDevice
     void** vt = *reinterpret_cast<void***>(pD3D7);
     void*  fnCreateDevice = vt[D3D7_VTI_CreateDevice];
 
-    char buf[192];
-    snprintf(buf, sizeof(buf), "[UHX] D3D7: CreateDevice=%p\n", fnCreateDevice);
-    OutputDebugStringA(buf);
+    LOG("[UHX] D3D7: CreateDevice=%p\n", fnCreateDevice);
 
     static MH_STATUS createDeviceStatus =
         MH_CreateHook(fnCreateDevice, &hkD3D7CreateDevice,
                       reinterpret_cast<void**>(&oD3D7CreateDevice));
-    snprintf(buf, sizeof(buf), "[UHX] D3D7: MH_CreateHook(CreateDevice)=%d\n",
-             (int)createDeviceStatus);
-    OutputDebugStringA(buf);
+    LOG("[UHX] D3D7: MH_CreateHook(CreateDevice)=%d\n", (int)createDeviceStatus);
 
     if (createDeviceStatus == MH_OK || createDeviceStatus == MH_ERROR_ALREADY_CREATED) {
         MH_EnableHook(fnCreateDevice);
-        OutputDebugStringA("[UHX] D3D7: CreateDevice hooked – waiting for game to call it\n");
+        LOG("[UHX] D3D7: CreateDevice hooked - waiting for game to call it\n");
     } else {
-        DebugLog("[UHX] D3D7: CreateDevice hook FAILED status=%d\n", (int)createDeviceStatus);
+        LOG("[UHX] D3D7: CreateDevice hook FAILED status=%d\n", (int)createDeviceStatus);
     }
 
     pD3D7->Release( );
@@ -563,11 +543,11 @@ static void HookD3D7(IDirectDraw7* pDD) {
 
 namespace DDraw {
     void Hook(HWND hwnd) {
-        OutputDebugStringA("[UHX] DDraw::Hook start\n");
+        LOG("[UHX] DDraw::Hook start\n");
 
         HMODULE hDDrawModule = GetModuleHandleA("ddraw.dll");
         if (!hDDrawModule) {
-            OutputDebugStringA("[!] DDraw: ddraw.dll not loaded - skipping.\n");
+            LOG("[UHX] DDraw: ddraw.dll not loaded - skipping.\n");
             return;
         }
 
@@ -575,13 +555,13 @@ namespace DDraw {
         auto pfnCreate = reinterpret_cast<PFN_DirectDrawCreateEx>(
             GetProcAddress(hDDrawModule, "DirectDrawCreateEx"));
         if (!pfnCreate) {
-            OutputDebugStringA("[!] DDraw: DirectDrawCreateEx not found.\n");
+            LOG("[UHX] DDraw: DirectDrawCreateEx not found.\n");
             return;
         }
 
         IDirectDraw7* pDD = nullptr;
         if (FAILED(pfnCreate(NULL, reinterpret_cast<LPVOID*>(&pDD), IID_IDirectDraw7, NULL))) {
-            OutputDebugStringA("[!] DDraw: DirectDrawCreateEx failed.\n");
+            LOG("[UHX] DDraw: DirectDrawCreateEx failed.\n");
             return;
         }
 
@@ -595,7 +575,7 @@ namespace DDraw {
         IDirectDrawSurface7* pSurface = nullptr;
         bool bFullscreenExclusive = false;
         if (FAILED(pDD->CreateSurface(&sd, &pSurface, NULL))) {
-            OutputDebugStringA("[UHX] DDraw: Primary surface unavailable, trying offscreen\n");
+            LOG("[UHX] DDraw: Primary surface unavailable, trying offscreen\n");
             bFullscreenExclusive = true;
             sd.dwFlags        = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT;
             sd.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN;
@@ -610,8 +590,8 @@ namespace DDraw {
             IUnknown* pUnk = nullptr;
             if (SUCCEEDED(pSurface->QueryInterface(IID_IUnknown, reinterpret_cast<void**>(&pUnk)))) {
                 if (g_pPrimaryIdentity) g_pPrimaryIdentity->Release( );
-                g_pPrimaryIdentity = pUnk; // kept alive – used for present-blt detection
-                OutputDebugStringA("[UHX] DDraw: primary identity cached\n");
+                g_pPrimaryIdentity = pUnk;
+                LOG("[UHX] DDraw: primary identity cached\n");
             }
         }
 
@@ -620,9 +600,7 @@ namespace DDraw {
         void* fnBltFast = pVTable[7];
         void* fnFlip    = pVTable[11];
 
-        char buf[192];
-        snprintf(buf, sizeof(buf), "[UHX] DDraw: Blt=%p BltFast=%p Flip=%p\n", fnBlt, fnBltFast, fnFlip);
-        OutputDebugStringA(buf);
+        LOG("[UHX] DDraw: Blt=%p BltFast=%p Flip=%p\n", fnBlt, fnBltFast, fnFlip);
 
         pSurface->Release( );
 
@@ -648,20 +626,14 @@ namespace DDraw {
 
         if (U::GetRenderingBackend( ) == NONE) {
             U::SetRenderingBackend(DIRECTDRAW);
-            if (bFullscreenExclusive)
-                OutputDebugStringA("[UHX] DDraw: fullscreen exclusive - claimed DIRECTDRAW\n");
-            else
-                OutputDebugStringA("[UHX] DDraw: windowed - claimed DIRECTDRAW\n");
+            LOG("[UHX] DDraw: %s - claimed DIRECTDRAW\n",
+                bFullscreenExclusive ? "fullscreen exclusive" : "windowed");
         } else {
-            char claimBuf[128];
-            snprintf(claimBuf, sizeof(claimBuf),
-                     "[UHX] DDraw: backend already claimed (%d) - not overriding\n",
-                     (int)U::GetRenderingBackend( ));
-            OutputDebugStringA(claimBuf);
+            LOG("[UHX] DDraw: backend already claimed (%d) - not overriding\n",
+                (int)U::GetRenderingBackend( ));
         }
 
-        OutputDebugStringA("[+] DDraw: Hooks installed.\n");
-        OutputDebugStringA("[UHX] DDraw::Hook complete.\n");
+        LOG("[UHX] DDraw: Hooks installed.\n");
     }
 
     void Unhook( ) {

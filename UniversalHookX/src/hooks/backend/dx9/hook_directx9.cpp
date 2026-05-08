@@ -107,7 +107,8 @@ static bool CreateDeviceD3D9(HWND hWnd) {
 static std::add_pointer_t<HRESULT WINAPI(IDirect3DDevice9*, D3DPRESENT_PARAMETERS*)> oReset;
 static HRESULT WINAPI hkReset(IDirect3DDevice9* pDevice,
                               D3DPRESENT_PARAMETERS* pPresentationParameters) {
-    ImGui_ImplDX9_InvalidateDeviceObjects( );
+    if (ImGui::GetCurrentContext( ) && ImGui::GetIO( ).BackendRendererUserData)
+        ImGui_ImplDX9_InvalidateDeviceObjects( );
 
     return oReset(pDevice, pPresentationParameters);
 }
@@ -116,7 +117,8 @@ static std::add_pointer_t<HRESULT WINAPI(IDirect3DDevice9*, D3DPRESENT_PARAMETER
 static HRESULT WINAPI hkResetEx(IDirect3DDevice9* pDevice,
                                 D3DPRESENT_PARAMETERS* pPresentationParameters,
                                 D3DDISPLAYMODEEX* pFullscreenDisplayMode) {
-    ImGui_ImplDX9_InvalidateDeviceObjects( );
+    if (ImGui::GetCurrentContext( ) && ImGui::GetIO( ).BackendRendererUserData)
+        ImGui_ImplDX9_InvalidateDeviceObjects( );
 
     return oResetEx(pDevice, pPresentationParameters, pFullscreenDisplayMode);
 }
@@ -259,8 +261,7 @@ static void RenderImGui_DX9(IDirect3DDevice9* pDevice) {
         return;
 
     if (U::GetRenderingBackend( ) == NONE) {
-        OutputDebugStringA("[UHX] DX9 Present fired — claiming backend\n");
-        LOG("[+] DX9 Present fired — claiming backend\n");
+        LOG("[UHX] DX9 Present fired — claiming backend\n");
         U::SetRenderingBackend(DIRECTX9);
     }
 

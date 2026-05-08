@@ -56,16 +56,24 @@ static bool CreateDeviceVK( ) {
         create_info.enabledExtensionCount = 1;
         create_info.ppEnabledExtensionNames = &instance_extension;
 
-        // Create Vulkan Instance without any debug feature
-        vkCreateInstance(&create_info, g_Allocator, &g_Instance);
+        VkResult res = vkCreateInstance(&create_info, g_Allocator, &g_Instance);
+        if (res != VK_SUCCESS || !g_Instance) {
+            LOG("[!] Vulkan: vkCreateInstance() failed (result=%d).\n", (int)res);
+            return false;
+        }
         LOG("[+] Vulkan: g_Instance: 0x%p\n", g_Instance);
     }
 
     // Select GPU
     {
-        uint32_t gpu_count;
+        uint32_t gpu_count = 0;
         vkEnumeratePhysicalDevices(g_Instance, &gpu_count, NULL);
-        IM_ASSERT(gpu_count > 0);
+        if (gpu_count == 0) {
+            LOG("[!] Vulkan: No physical devices found.\n");
+            vkDestroyInstance(g_Instance, g_Allocator);
+            g_Instance = VK_NULL_HANDLE;
+            return false;
+        }
 
         VkPhysicalDevice* gpus = new VkPhysicalDevice[sizeof(VkPhysicalDevice) * gpu_count];
         vkEnumeratePhysicalDevices(g_Instance, &gpu_count, gpus);
@@ -91,7 +99,7 @@ static bool CreateDeviceVK( ) {
 
     // Select graphics queue family
     {
-        uint32_t count;
+        uint32_t count = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(g_PhysicalDevice, &count, NULL);
         g_QueueFamilies.resize(count);
         vkGetPhysicalDeviceQueueFamilyProperties(g_PhysicalDevice, &count, g_QueueFamilies.data( ));
@@ -101,7 +109,12 @@ static bool CreateDeviceVK( ) {
                 break;
             }
         }
-        IM_ASSERT(g_QueueFamily != (uint32_t)-1);
+        if (g_QueueFamily == (uint32_t)-1) {
+            LOG("[!] Vulkan: No graphics queue family found.\n");
+            vkDestroyInstance(g_Instance, g_Allocator);
+            g_Instance = VK_NULL_HANDLE;
+            return false;
+        }
 
         LOG("[+] Vulkan: g_QueueFamily: %u\n", g_QueueFamily);
     }
@@ -366,6 +379,9 @@ namespace VK {
 } // namespace VK
 
 static void CleanupRenderTarget( ) {
+    if (!g_Device)
+        return;
+
     for (uint32_t i = 0; i < RTL_NUMBER_OF(g_Frames); ++i) {
         if (g_Frames[i].Fence) {
             vkDestroyFence(g_Device, g_Frames[i].Fence, g_Allocator);
@@ -567,8 +583,7 @@ static void RenderImGui_Vulkan(VkQueue queue, const VkPresentInfoKHR* pPresentIn
         return;
 
     if (U::GetRenderingBackend( ) == NONE) {
-        OutputDebugStringA("[UHX] Vulkan Present fired — claiming backend\n");
-        LOG("[+] Vulkan Present fired — claiming backend\n");
+        LOG("[UHX] Vulkan Present fired — claiming backend\n");
         U::SetRenderingBackend(VULKAN);
     }
 

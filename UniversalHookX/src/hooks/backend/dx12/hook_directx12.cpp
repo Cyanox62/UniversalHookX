@@ -487,8 +487,7 @@ static void RenderImGui_DX12(IDXGISwapChain3* pSwapChain) {
             return;
         }
         pDevice12->Release( );
-        OutputDebugStringA("[UHX] DX12 detected — claiming backend\n");
-        LOG("[+] DX12 detected — claiming backend\n");
+        LOG("[UHX] DX12 detected — claiming backend\n");
         U::SetRenderingBackend(DIRECTX12);
     }
 
