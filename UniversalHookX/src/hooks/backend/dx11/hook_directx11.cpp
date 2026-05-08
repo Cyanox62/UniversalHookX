@@ -217,15 +217,46 @@ static HRESULT WINAPI hkCreateSwapChainForComposition(IDXGIFactory* pFactory,
     return oCreateSwapChainForComposition(pFactory, pDevice, pDesc, pRestrictToOutput, ppSwapChain);
 }
 
+static constexpr const char* DX11_TEMP_WND_CLASS = "__uhx_dx11_tmp";
+
+static HWND CreateTempWindowDX11( ) {
+    WNDCLASSEXA wc = { sizeof(wc) };
+    wc.lpfnWndProc   = DefWindowProcA;
+    wc.hInstance     = GetModuleHandleA(NULL);
+    wc.lpszClassName = DX11_TEMP_WND_CLASS;
+    RegisterClassExA(&wc);
+    return CreateWindowExA(0, DX11_TEMP_WND_CLASS, NULL, WS_POPUP, 0, 0, 1, 1,
+                           NULL, NULL, wc.hInstance, NULL);
+}
+
 namespace DX11 {
     void Hook(HWND hwnd) {
-        if (!CreateDeviceD3D11(hwnd)) {
+        const DWORD pid = GetCurrentProcessId( );
+        LOG("[UHX] DX11::Hook called. hwnd=0x%p PID=%lu\n", (void*)hwnd, pid);
+
+        // Chromium/Electron GPU subprocesses are windowless — make a throwaway
+        // window for the temp swapchain so vtable extraction still works.
+        HWND hTempWnd = NULL;
+        HWND hWndForDevice = hwnd;
+        if (!hWndForDevice) {
+            hTempWnd = CreateTempWindowDX11( );
+            hWndForDevice = hTempWnd;
+            if (!hWndForDevice) {
+                LOG("[UHX] DX11: failed to create temp window — aborting.\n");
+                return;
+            }
+        }
+
+        if (!CreateDeviceD3D11(hWndForDevice)) {
             LOG("[!] CreateDeviceD3D11() failed.\n");
+            if (hTempWnd) {
+                DestroyWindow(hTempWnd);
+                UnregisterClassA(DX11_TEMP_WND_CLASS, GetModuleHandleA(NULL));
+            }
             return;
         }
 
-        LOG("[+] DirectX11: g_pd3dDevice: 0x%p\n", g_pd3dDevice);
-        LOG("[+] DirectX11: g_pSwapChain: 0x%p\n", g_pSwapChain);
+        LOG("[UHX] DX11::Hook: device=0x%p swapchain=0x%p\n", g_pd3dDevice, g_pSwapChain);
 
         if (g_pd3dDevice) {
             Menu::InitializeContext(hwnd);
@@ -273,6 +304,8 @@ namespace DX11 {
             void* fnResizeBuffers = pVTable[13];
             void* fnResizeBuffers1 = pVTable[39];
 
+            LOG("[UHX] DX11::Hook: fnPresent=0x%p fnPresent1=0x%p PID=%lu\n", fnPresent, fnPresent1, pid);
+
             CleanupDeviceD3D11( );
 
             static MH_STATUS cscStatus = MH_CreateHook(reinterpret_cast<void**>(fnCreateSwapChain), &hkCreateSwapChain, reinterpret_cast<void**>(&oCreateSwapChain));
@@ -286,6 +319,8 @@ namespace DX11 {
             static MH_STATUS resizeStatus = MH_CreateHook(reinterpret_cast<void**>(fnResizeBuffers), &hkResizeBuffers, reinterpret_cast<void**>(&oResizeBuffers));
             static MH_STATUS resize1Status = MH_CreateHook(reinterpret_cast<void**>(fnResizeBuffers1), &hkResizeBuffers1, reinterpret_cast<void**>(&oResizeBuffers1));
 
+            LOG("[UHX] DX11::Hook: MH_CreateHook Present=%d Present1=%d PID=%lu\n", (int)presentStatus, (int)present1Status, pid);
+
             MH_EnableHook(fnCreateSwapChain);
             MH_EnableHook(fnCreateSwapChainForHwndChain);
             MH_EnableHook(fnCreateSwapChainForCWindowChain);
@@ -296,6 +331,11 @@ namespace DX11 {
 
             MH_EnableHook(fnResizeBuffers);
             MH_EnableHook(fnResizeBuffers1);
+        }
+
+        if (hTempWnd) {
+            DestroyWindow(hTempWnd);
+            UnregisterClassA(DX11_TEMP_WND_CLASS, GetModuleHandleA(NULL));
         }
     }
 
@@ -368,8 +408,11 @@ static void RenderImGui_DX11(IDXGISwapChain* pSwapChain) {
             return;
         }
 #endif
+        OutputDebugStringA("[UHX] DX11 Present fired — claiming backend\n");
         LOG("[UHX] DX11 Present fired — claiming backend\n");
         U::SetRenderingBackend(DIRECTX11);
+        // One-time self-notification to confirm overlay rendering is live.
+        Menu::AddNotification("Overlay Active", "DX11 backend claimed", 4000.0f);
     }
 
     if (!ImGui::GetIO( ).BackendRendererUserData) {

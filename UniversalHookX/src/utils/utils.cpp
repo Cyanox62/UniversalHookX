@@ -61,18 +61,29 @@ namespace Utils {
 	}
 
 	HWND GetProcessWindow( ) {
+		// Timeout — windowless processes (e.g. Chromium/Electron GPU subprocesses)
+		// would otherwise loop forever. Returning NULL is a valid outcome and the
+		// caller is expected to handle it (skip WndProc, run windowless).
+		constexpr int TIMEOUT_MS = 5000;
+		constexpr int POLL_MS    = 200;
+
 		HWND hwnd = nullptr;
 		EnumWindows(::EnumWindowsCallback, reinterpret_cast<LPARAM>(&hwnd));
 
-		while (!hwnd) {
+		int waited = 0;
+		while (!hwnd && waited < TIMEOUT_MS) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(POLL_MS));
+			waited += POLL_MS;
 			EnumWindows(::EnumWindowsCallback, reinterpret_cast<LPARAM>(&hwnd));
-			LOG("[!] Waiting for window to appear.\n");
-			std::this_thread::sleep_for(std::chrono::milliseconds(200));
 		}
 
-		char name[128];
-		GetWindowTextA(hwnd, name, RTL_NUMBER_OF(name));
-		LOG("[+] Got window with name: '%s'\n", name);
+		if (hwnd) {
+			char name[128];
+			GetWindowTextA(hwnd, name, RTL_NUMBER_OF(name));
+			LOG("[UHX] Got window with name: '%s'\n", name);
+		} else {
+			LOG("[UHX] No window found after %dms — running windowless (likely a GPU subprocess).\n", TIMEOUT_MS);
+		}
 
 		return hwnd;
 	}

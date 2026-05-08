@@ -225,6 +225,7 @@
     <ClCompile Include="src\hooks\backend\dx8\hook_directx8.cpp" />
     <ClCompile Include="src\hooks\backend\dx9\hook_directx9.cpp" />
     <ClCompile Include="src\hooks\backend\dx10\hook_directx10.cpp" />
+    <ClCompile Include="src\hooks\backend\electron\hook_electron.cpp" />
     <ClCompile Include="src\hooks\backend\opengl\hook_opengl.cpp" />
     <ClCompile Include="src\hooks\backend\vulkan\hook_vulkan.cpp" />
     <ClCompile Include="src\hooks\hooks.cpp" />
@@ -268,6 +269,7 @@
     <ClInclude Include="src\hooks\backend\dx8\hook_directx8.hpp" />
     <ClInclude Include="src\hooks\backend\dx9\hook_directx9.hpp" />
     <ClInclude Include="src\hooks\backend\dx10\hook_directx10.hpp" />
+    <ClInclude Include="src\hooks\backend\electron\hook_electron.hpp" />
     <ClInclude Include="src\hooks\backend\opengl\hook_opengl.hpp" />
     <ClInclude Include="src\hooks\backend\vulkan\hook_vulkan.hpp" />
     <ClInclude Include="src\hooks\hooks.hpp" />

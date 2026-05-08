@@ -16,7 +16,7 @@
 #include <memory>
 #include <string>
 #include <thread>
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace ig = ImGui;
@@ -136,12 +136,18 @@ namespace Menu {
 
     static CritSec* s_mutex = nullptr;
     static std::vector<Notification>* s_notifications = nullptr;
-    static std::unordered_map<std::string, void*>* s_texCache = nullptr;
+    // Flat list instead of unordered_map: std::unordered_map allocates internal
+    // hash-table nodes via MSVC's STL small-block allocator which uses
+    // thread_local (static TLS). Static TLS requires the OS loader to assign a
+    // TLS index — that never happens for manually-mapped DLLs (Chromium GPU
+    // subprocess), so the first node allocation crashes. An empty std::vector
+    // makes no internal allocation on construction and is safe in this context.
+    static std::vector<std::pair<std::string, void*>>* s_texCache = nullptr;
     static TextureUploaderFn s_textureUploader = nullptr;
 
     static CritSec& GetNotificationsMutex( ) { return *s_mutex; }
     static std::vector<Notification>& GetNotifications( ) { return *s_notifications; }
-    static std::unordered_map<std::string, void*>& GetTexCache( ) { return *s_texCache; }
+    static std::vector<std::pair<std::string, void*>>& GetTexCache( ) { return *s_texCache; }
     static TextureUploaderFn& GetTextureUploader( ) { return s_textureUploader; }
 
     ImFont* g_fontRegular;
@@ -164,10 +170,14 @@ namespace Menu {
     }
 
     void EagerInit( ) {
+        OutputDebugStringA("[UHX] EagerInit: allocating s_mutex\n");
         s_mutex = new CritSec( );
+        OutputDebugStringA("[UHX] EagerInit: allocating s_notifications\n");
         s_notifications = new std::vector<Notification>( );
-        s_texCache = new std::unordered_map<std::string, void*>( );
+        OutputDebugStringA("[UHX] EagerInit: allocating s_texCache\n");
+        s_texCache = new std::vector<std::pair<std::string, void*>>( );
         s_textureUploader = nullptr;
+        OutputDebugStringA("[UHX] EagerInit: done\n");
     }
 
     void InitializeContext(HWND hwnd) {
@@ -250,10 +260,11 @@ namespace Menu {
         if (n.imgTex) return n.imgTex;
 
         if (!n.imageUrl.empty()) {
-            auto it = GetTexCache().find(n.imageUrl);
-            if (it != GetTexCache().end()) {
-                n.imgTex = it->second;
-                return n.imgTex;
+            for (auto& [url, tex] : GetTexCache()) {
+                if (url == n.imageUrl) {
+                    n.imgTex = tex;
+                    return n.imgTex;
+                }
             }
         }
 
@@ -263,7 +274,7 @@ namespace Menu {
         if (GetTextureUploader( ) && n.img->w > 0 && n.img->h > 0) {
             n.imgTex = GetTextureUploader( )(n.img->pixels.data( ), n.img->w, n.img->h);
             if (n.imgTex && !n.imageUrl.empty())
-                GetTexCache()[n.imageUrl] = n.imgTex;
+                GetTexCache().emplace_back(n.imageUrl, n.imgTex);
         }
 
         // Keep pixels alive so they can be re-uploaded if the device is recreated.
