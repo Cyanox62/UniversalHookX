@@ -33,9 +33,13 @@ namespace Utils {
 	RenderingBackend_t GetRenderingBackend( );
 	const char* RenderingBackendToStr( );
 
+	// Signals the Mist launcher that a rendering backend hook has fired.
+	// Called once from SetRenderingBackend() on the first rendered frame.
+	void NotifyLauncher();
+
 	HWND GetProcessWindow( );
 	void UnloadDLL( );
-	
+
 	HMODULE GetCurrentImageBase( );
 
 	int GetCorrectDXGIFormat(int eCurrentFormat);

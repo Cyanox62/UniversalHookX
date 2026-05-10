@@ -1,5 +1,6 @@
 #include <Windows.h>
 #include <thread>
+#include <atomic>
 #include <dxgi.h>
 
 #include "utils.hpp"
@@ -11,6 +12,25 @@
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
 static RenderingBackend_t g_eRenderingBackend = NONE;
+static std::atomic<bool> g_backendNotified{ false };
+
+static DWORD WINAPI NotifyLauncherThread(LPVOID) {
+    char pipeName[64];
+    snprintf(pipeName, sizeof(pipeName), "\\\\.\\pipe\\MistOverlayStatus_%lu", GetCurrentProcessId());
+
+    for (int i = 0; i < 10; i++) {
+        HANDLE pipe = CreateFileA(pipeName, GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+        if (pipe != INVALID_HANDLE_VALUE) {
+            BYTE confirm = 1;
+            DWORD written = 0;
+            WriteFile(pipe, &confirm, 1, &written, nullptr);
+            CloseHandle(pipe);
+            return 0;
+        }
+        Sleep(500);
+    }
+    return 0;
+}
 
 static BOOL CALLBACK EnumWindowsCallback(HWND handle, LPARAM lParam) {
 	const auto isMainWindow = [ handle ]( ) {
@@ -34,8 +54,17 @@ static DWORD WINAPI _UnloadDLL(LPVOID lpParam) {
 }
 
 namespace Utils {
+	void NotifyLauncher() {
+		if (!g_backendNotified.exchange(true)) {
+			HANDLE h = CreateThread(nullptr, 0, NotifyLauncherThread, nullptr, 0, nullptr);
+			if (h) CloseHandle(h);
+		}
+	}
+
 	void SetRenderingBackend(RenderingBackend_t eRenderingBackground) {
+		if (g_eRenderingBackend != NONE) return;
 		g_eRenderingBackend = eRenderingBackground;
+		NotifyLauncher();
 	}
 
 	RenderingBackend_t GetRenderingBackend( ) {
